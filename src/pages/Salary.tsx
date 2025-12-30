@@ -1,6 +1,7 @@
 import { Users } from "lucide-react";
 import { EconomyLayout } from "@/components/layout/EconomyLayout";
 import { ServicePageTemplate } from "@/components/ServicePageTemplate";
+import { useToast } from "@/hooks/use-toast";
 
 const features = [
   {
@@ -39,6 +40,15 @@ const benefits = [
 ];
 
 export default function Salary() {
+  const { toast } = useToast();
+
+  const handleRunPayroll = () => {
+    toast({
+      title: "Payroll Module",
+      description: "Opening payroll processing...",
+    });
+  };
+
   return (
     <EconomyLayout>
       <ServicePageTemplate
@@ -49,6 +59,8 @@ export default function Salary() {
         features={features}
         benefits={benefits}
         ctaText="Simplify Your Payroll"
+        actionText="Run Payroll"
+        onAction={handleRunPayroll}
       />
     </EconomyLayout>
   );

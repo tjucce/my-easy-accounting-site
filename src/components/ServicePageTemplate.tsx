@@ -1,8 +1,9 @@
 import { ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, Check } from "lucide-react";
+import { ArrowRight, Check, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
 
 interface ServiceFeature {
   title: string;
@@ -17,6 +18,8 @@ interface ServicePageTemplateProps {
   features: ServiceFeature[];
   benefits: string[];
   ctaText?: string;
+  actionText?: string;
+  onAction?: () => void;
 }
 
 export function ServicePageTemplate({
@@ -27,7 +30,11 @@ export function ServicePageTemplate({
   features,
   benefits,
   ctaText = "Get Started Today",
+  actionText,
+  onAction,
 }: ServicePageTemplateProps) {
+  const { isAuthenticated } = useAuth();
+
   return (
     <div className="min-h-screen">
       {/* Hero Section */}
@@ -47,6 +54,21 @@ export function ServicePageTemplate({
             <p className="text-lg text-primary-foreground/80 animate-slide-up" style={{ animationDelay: "0.3s" }}>
               {description}
             </p>
+            
+            {/* Action Button for Authenticated Users */}
+            {isAuthenticated && actionText && onAction && (
+              <div className="mt-8 animate-slide-up" style={{ animationDelay: "0.4s" }}>
+                <Button 
+                  variant="hero" 
+                  size="xl" 
+                  onClick={onAction}
+                  className="bg-background text-foreground hover:bg-background/90"
+                >
+                  <Play className="h-5 w-5 mr-2" />
+                  {actionText}
+                </Button>
+              </div>
+            )}
           </div>
         </div>
       </section>

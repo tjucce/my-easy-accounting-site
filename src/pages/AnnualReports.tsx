@@ -1,6 +1,7 @@
 import { BarChart3 } from "lucide-react";
 import { EconomyLayout } from "@/components/layout/EconomyLayout";
 import { ServicePageTemplate } from "@/components/ServicePageTemplate";
+import { useToast } from "@/hooks/use-toast";
 
 const features = [
   {
@@ -39,6 +40,15 @@ const benefits = [
 ];
 
 export default function AnnualReports() {
+  const { toast } = useToast();
+
+  const handleGenerateReport = () => {
+    toast({
+      title: "Annual Reports",
+      description: "Opening report generator...",
+    });
+  };
+
   return (
     <EconomyLayout>
       <ServicePageTemplate
@@ -49,6 +59,8 @@ export default function AnnualReports() {
         features={features}
         benefits={benefits}
         ctaText="Get Your Report"
+        actionText="Generate Annual Report"
+        onAction={handleGenerateReport}
       />
     </EconomyLayout>
   );
