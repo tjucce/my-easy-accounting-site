@@ -1,8 +1,20 @@
 import { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Menu, X, Calculator } from "lucide-react";
+import { Menu, X, Calculator, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/hooks/useAuth";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
 
 const navigation = [
   { name: "Economy", href: "/economy" },
@@ -13,13 +25,38 @@ const navigation = [
 
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const location = useLocation();
+  const { isAuthenticated, login, logout, user } = useAuth();
+  const { toast } = useToast();
 
   const isActive = (href: string) => {
     if (href === "/economy") {
       return location.pathname.startsWith("/economy");
     }
     return location.pathname === href;
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await login(email, password);
+    setLoginOpen(false);
+    setEmail("");
+    setPassword("");
+    toast({
+      title: "Welcome!",
+      description: "You have successfully signed in.",
+    });
+  };
+
+  const handleLogout = () => {
+    logout();
+    toast({
+      title: "Signed out",
+      description: "You have been signed out.",
+    });
   };
 
   return (
@@ -55,12 +92,67 @@ export function Header() {
 
         {/* Desktop CTA */}
         <div className="hidden lg:flex lg:items-center lg:gap-3">
-          <Button variant="ghost" size="sm">
-            Sign In
-          </Button>
-          <Button variant="accent" size="sm">
-            Get Started
-          </Button>
+          {isAuthenticated ? (
+            <>
+              <span className="text-sm text-muted-foreground">
+                {user?.email}
+              </span>
+              <Button variant="ghost" size="sm" onClick={handleLogout}>
+                <LogOut className="h-4 w-4 mr-2" />
+                Sign Out
+              </Button>
+            </>
+          ) : (
+            <>
+              <Dialog open={loginOpen} onOpenChange={setLoginOpen}>
+                <DialogTrigger asChild>
+                  <Button variant="ghost" size="sm">
+                    Sign In
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Sign In</DialogTitle>
+                    <DialogDescription>
+                      Sign in to access your company profile and bookkeeping features.
+                    </DialogDescription>
+                  </DialogHeader>
+                  <form onSubmit={handleLogin} className="space-y-4 mt-4">
+                    <div>
+                      <Label htmlFor="email">Email</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="your@email.com"
+                        className="mt-1.5"
+                        required
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="password">Password</Label>
+                      <Input
+                        id="password"
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        placeholder="••••••••"
+                        className="mt-1.5"
+                        required
+                      />
+                    </div>
+                    <Button type="submit" variant="hero" className="w-full">
+                      Sign In
+                    </Button>
+                  </form>
+                </DialogContent>
+              </Dialog>
+              <Button variant="accent" size="sm">
+                Get Started
+              </Button>
+            </>
+          )}
         </div>
 
         {/* Mobile menu button */}
@@ -94,12 +186,21 @@ export function Header() {
               </Link>
             ))}
             <div className="pt-4 flex flex-col gap-2">
-              <Button variant="ghost" className="justify-center">
-                Sign In
-              </Button>
-              <Button variant="accent" className="justify-center">
-                Get Started
-              </Button>
+              {isAuthenticated ? (
+                <Button variant="ghost" className="justify-center" onClick={handleLogout}>
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Sign Out
+                </Button>
+              ) : (
+                <>
+                  <Button variant="ghost" className="justify-center" onClick={() => setLoginOpen(true)}>
+                    Sign In
+                  </Button>
+                  <Button variant="accent" className="justify-center">
+                    Get Started
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </div>

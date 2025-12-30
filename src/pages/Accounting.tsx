@@ -1,6 +1,7 @@
 import { Calculator } from "lucide-react";
 import { EconomyLayout } from "@/components/layout/EconomyLayout";
 import { ServicePageTemplate } from "@/components/ServicePageTemplate";
+import { useToast } from "@/hooks/use-toast";
 
 const features = [
   {
@@ -39,6 +40,15 @@ const benefits = [
 ];
 
 export default function Accounting() {
+  const { toast } = useToast();
+
+  const handleStartBookkeeping = () => {
+    toast({
+      title: "Bookkeeping Started",
+      description: "Opening the bookkeeping module...",
+    });
+  };
+
   return (
     <EconomyLayout>
       <ServicePageTemplate
@@ -49,6 +59,8 @@ export default function Accounting() {
         features={features}
         benefits={benefits}
         ctaText="Start Your Free Consultation"
+        actionText="Start Bookkeeping"
+        onAction={handleStartBookkeeping}
       />
     </EconomyLayout>
   );

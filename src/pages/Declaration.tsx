@@ -1,6 +1,7 @@
 import { FileText } from "lucide-react";
 import { EconomyLayout } from "@/components/layout/EconomyLayout";
 import { ServicePageTemplate } from "@/components/ServicePageTemplate";
+import { useToast } from "@/hooks/use-toast";
 
 const features = [
   {
@@ -39,6 +40,15 @@ const benefits = [
 ];
 
 export default function Declaration() {
+  const { toast } = useToast();
+
+  const handleFileTaxes = () => {
+    toast({
+      title: "Tax Filing",
+      description: "Opening tax declaration module...",
+    });
+  };
+
   return (
     <EconomyLayout>
       <ServicePageTemplate
@@ -49,6 +59,8 @@ export default function Declaration() {
         features={features}
         benefits={benefits}
         ctaText="Get Tax Help Today"
+        actionText="File Tax Declaration"
+        onAction={handleFileTaxes}
       />
     </EconomyLayout>
   );
