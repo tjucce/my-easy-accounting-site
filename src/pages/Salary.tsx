@@ -1,4 +1,5 @@
 import { Users } from "lucide-react";
+import { EconomyLayout } from "@/components/layout/EconomyLayout";
 import { ServicePageTemplate } from "@/components/ServicePageTemplate";
 
 const features = [
@@ -39,14 +40,16 @@ const benefits = [
 
 export default function Salary() {
   return (
-    <ServicePageTemplate
-      title="Salary Services"
-      subtitle="Payroll Solutions"
-      description="Streamlined payroll processing and employee compensation management that ensures your team gets paid accurately and on time, every time."
-      icon={<Users className="h-8 w-8 text-primary-foreground" />}
-      features={features}
-      benefits={benefits}
-      ctaText="Simplify Your Payroll"
-    />
+    <EconomyLayout>
+      <ServicePageTemplate
+        title="Salary Services"
+        subtitle="Payroll Solutions"
+        description="Streamlined payroll processing and employee compensation management that ensures your team gets paid accurately and on time, every time."
+        icon={<Users className="h-8 w-8 text-primary-foreground" />}
+        features={features}
+        benefits={benefits}
+        ctaText="Simplify Your Payroll"
+      />
+    </EconomyLayout>
   );
 }
