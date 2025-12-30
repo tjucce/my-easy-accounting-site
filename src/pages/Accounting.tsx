@@ -1,4 +1,5 @@
 import { Calculator } from "lucide-react";
+import { EconomyLayout } from "@/components/layout/EconomyLayout";
 import { ServicePageTemplate } from "@/components/ServicePageTemplate";
 
 const features = [
@@ -39,14 +40,16 @@ const benefits = [
 
 export default function Accounting() {
   return (
-    <ServicePageTemplate
-      title="Accounting Services"
-      subtitle="Core Service"
-      description="Comprehensive bookkeeping and financial management solutions that help you maintain accurate records and make informed business decisions."
-      icon={<Calculator className="h-8 w-8 text-primary-foreground" />}
-      features={features}
-      benefits={benefits}
-      ctaText="Start Your Free Consultation"
-    />
+    <EconomyLayout>
+      <ServicePageTemplate
+        title="Accounting Services"
+        subtitle="Core Service"
+        description="Comprehensive bookkeeping and financial management solutions that help you maintain accurate records and make informed business decisions."
+        icon={<Calculator className="h-8 w-8 text-primary-foreground" />}
+        features={features}
+        benefits={benefits}
+        ctaText="Start Your Free Consultation"
+      />
+    </EconomyLayout>
   );
 }

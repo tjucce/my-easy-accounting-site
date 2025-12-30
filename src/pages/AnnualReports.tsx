@@ -1,4 +1,5 @@
 import { BarChart3 } from "lucide-react";
+import { EconomyLayout } from "@/components/layout/EconomyLayout";
 import { ServicePageTemplate } from "@/components/ServicePageTemplate";
 
 const features = [
@@ -39,14 +40,16 @@ const benefits = [
 
 export default function AnnualReports() {
   return (
-    <ServicePageTemplate
-      title="Annual Reports"
-      subtitle="Financial Reporting"
-      description="Comprehensive annual financial reporting and analysis that provides clear insights into your business performance and supports informed decision-making."
-      icon={<BarChart3 className="h-8 w-8 text-primary-foreground" />}
-      features={features}
-      benefits={benefits}
-      ctaText="Get Your Report"
-    />
+    <EconomyLayout>
+      <ServicePageTemplate
+        title="Annual Reports"
+        subtitle="Financial Reporting"
+        description="Comprehensive annual financial reporting and analysis that provides clear insights into your business performance and supports informed decision-making."
+        icon={<BarChart3 className="h-8 w-8 text-primary-foreground" />}
+        features={features}
+        benefits={benefits}
+        ctaText="Get Your Report"
+      />
+    </EconomyLayout>
   );
 }

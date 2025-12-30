@@ -1,4 +1,5 @@
 import { FileText } from "lucide-react";
+import { EconomyLayout } from "@/components/layout/EconomyLayout";
 import { ServicePageTemplate } from "@/components/ServicePageTemplate";
 
 const features = [
@@ -39,14 +40,16 @@ const benefits = [
 
 export default function Declaration() {
   return (
-    <ServicePageTemplate
-      title="Tax Declaration"
-      subtitle="Tax Services"
-      description="Expert tax preparation and filing services that ensure compliance while maximizing your returns through strategic tax planning."
-      icon={<FileText className="h-8 w-8 text-primary-foreground" />}
-      features={features}
-      benefits={benefits}
-      ctaText="Get Tax Help Today"
-    />
+    <EconomyLayout>
+      <ServicePageTemplate
+        title="Tax Declaration"
+        subtitle="Tax Services"
+        description="Expert tax preparation and filing services that ensure compliance while maximizing your returns through strategic tax planning."
+        icon={<FileText className="h-8 w-8 text-primary-foreground" />}
+        features={features}
+        benefits={benefits}
+        ctaText="Get Tax Help Today"
+      />
+    </EconomyLayout>
   );
 }
