@@ -3,20 +3,23 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
-import { Layout } from "@/components/layout/Layout";
-import { AuthProvider } from "@/hooks/useAuth";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { AccountingProvider } from "@/contexts/AccountingContext";
+import { PublicLayout } from "@/components/layout/PublicLayout";
+import { EconomyLayout } from "@/components/layout/EconomyLayout";
 import Index from "./pages/Index";
-import Economy from "./pages/Economy";
-import Accounting from "./pages/Accounting";
-import Billing from "./pages/Billing";
-import Salary from "./pages/Salary";
-import Declaration from "./pages/Declaration";
-import AnnualReports from "./pages/AnnualReports";
-import Accounts from "./pages/Accounts";
-import Profile from "./pages/Profile";
-import Pricing from "./pages/Pricing";
-import Support from "./pages/Support";
-import About from "./pages/About";
+import PricingPage from "./pages/PricingPage";
+import SupportPage from "./pages/SupportPage";
+import AboutPage from "./pages/AboutPage";
+import LoginPage from "./pages/LoginPage";
+import CompanyPage from "./pages/CompanyPage";
+import EconomyIndex from "./pages/economy/EconomyIndex";
+import AccountingPage from "./pages/economy/AccountingPage";
+import BillingPage from "./pages/economy/BillingPage";
+import SalaryPage from "./pages/economy/SalaryPage";
+import DeclarationPage from "./pages/economy/DeclarationPage";
+import AnnualReportsPage from "./pages/economy/AnnualReportsPage";
+import AccountsPage from "./pages/economy/AccountsPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -24,30 +27,43 @@ const queryClient = new QueryClient();
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <AuthProvider>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Layout>
+      <AccountingProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
             <Routes>
-              <Route path="/" element={<Index />} />
-              <Route path="/economy" element={<Economy />} />
-              <Route path="/economy/accounting" element={<Accounting />} />
-              <Route path="/economy/billing" element={<Billing />} />
-              <Route path="/economy/salary" element={<Salary />} />
-              <Route path="/economy/declaration" element={<Declaration />} />
-              <Route path="/economy/annual-reports" element={<AnnualReports />} />
-              <Route path="/economy/accounts" element={<Accounts />} />
-              <Route path="/economy/profile" element={<Profile />} />
-              <Route path="/pricing" element={<Pricing />} />
-              <Route path="/support" element={<Support />} />
-              <Route path="/about" element={<About />} />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              {/* Public pages with header/footer */}
+              <Route element={<PublicLayout />}>
+                <Route path="/" element={<Index />} />
+                <Route path="/pricing" element={<PricingPage />} />
+                <Route path="/support" element={<SupportPage />} />
+                <Route path="/about" element={<AboutPage />} />
+              </Route>
+
+              {/* Economy section with sidebar */}
+              <Route path="/economy" element={<EconomyLayout />}>
+                <Route index element={<EconomyIndex />} />
+                <Route path="accounting" element={<AccountingPage />} />
+                <Route path="billing" element={<BillingPage />} />
+                <Route path="salary" element={<SalaryPage />} />
+                <Route path="declaration" element={<DeclarationPage />} />
+                <Route path="annual-reports" element={<AnnualReportsPage />} />
+                <Route path="accounts" element={<AccountsPage />} />
+              </Route>
+
+              {/* Company page */}
+              <Route path="/company" element={<CompanyPage />} />
+
+              {/* Auth pages (standalone) */}
+              <Route path="/login" element={<LoginPage />} />
+
+              {/* Catch-all */}
               <Route path="*" element={<NotFound />} />
             </Routes>
-          </Layout>
-        </BrowserRouter>
-      </TooltipProvider>
+          </BrowserRouter>
+        </TooltipProvider>
+      </AccountingProvider>
     </AuthProvider>
   </QueryClientProvider>
 );
