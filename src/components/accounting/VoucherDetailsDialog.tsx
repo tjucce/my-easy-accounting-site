@@ -1,3 +1,4 @@
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -7,8 +8,9 @@ import {
 import { Button } from "@/components/ui/button";
 import { Voucher, useAccounting } from "@/contexts/AccountingContext";
 import { formatAmount } from "@/lib/bas-accounts";
-import { RotateCcw, Trash2, FileText, Image, ExternalLink } from "lucide-react";
+import { RotateCcw, Trash2, Edit, FileText, Image, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
+import { VoucherForm } from "./VoucherForm";
 
 interface VoucherDetailsDialogProps {
   open: boolean;
@@ -21,7 +23,8 @@ export function VoucherDetailsDialog({
   onOpenChange, 
   voucher 
 }: VoucherDetailsDialogProps) {
-  const { createVoucher, deleteVoucher } = useAccounting();
+  const { createVoucher, updateVoucher, deleteVoucher } = useAccounting();
+  const [isEditing, setIsEditing] = useState(false);
 
   if (!voucher) return null;
 
@@ -54,6 +57,10 @@ export function VoucherDetailsDialog({
     onOpenChange(false);
   };
 
+  const handleEditComplete = () => {
+    setIsEditing(false);
+  };
+
   const openAttachment = (dataUrl: string) => {
     const newWindow = window.open();
     if (newWindow) {
@@ -69,16 +76,25 @@ export function VoucherDetailsDialog({
   const totalCredit = voucher.lines.reduce((sum, l) => sum + l.credit, 0);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(open) => { if (!open) setIsEditing(false); onOpenChange(open); }}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Voucher #{voucher.voucherNumber}</DialogTitle>
+          <DialogTitle>
+            {isEditing ? `Edit Voucher #${voucher.voucherNumber}` : `Voucher #${voucher.voucherNumber}`}
+          </DialogTitle>
           <p className="text-sm text-muted-foreground">
             Created {new Date(voucher.createdAt).toLocaleDateString()}
           </p>
         </DialogHeader>
 
-        <div className="space-y-6">
+        {isEditing ? (
+          <VoucherForm 
+            editVoucher={voucher}
+            onSuccess={handleEditComplete}
+            onCancel={() => setIsEditing(false)}
+          />
+        ) : (
+          <div className="space-y-6">
           {/* Voucher info */}
           <div className="grid md:grid-cols-2 gap-4 p-4 bg-muted/30 rounded-lg">
             <div>
@@ -158,6 +174,10 @@ export function VoucherDetailsDialog({
 
           {/* Actions */}
           <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setIsEditing(true)}>
+              <Edit className="h-4 w-4 mr-2" />
+              Edit Voucher
+            </Button>
             <Button variant="outline" onClick={handleRevert}>
               <RotateCcw className="h-4 w-4 mr-2" />
               Revert Voucher
@@ -168,6 +188,7 @@ export function VoucherDetailsDialog({
             </Button>
           </div>
         </div>
+        )}
       </DialogContent>
     </Dialog>
   );

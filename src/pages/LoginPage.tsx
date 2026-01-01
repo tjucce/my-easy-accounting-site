@@ -25,11 +25,13 @@ export default function LoginPage() {
       if (isSignUp) {
         await signup(email, password, name);
         toast.success("Account created successfully!");
+        // Redirect to company page for first-time setup
+        navigate("/company");
       } else {
         await login(email, password);
         toast.success("Welcome back!");
+        navigate("/economy");
       }
-      navigate("/economy");
     } catch (error) {
       toast.error("Something went wrong. Please try again.");
     } finally {

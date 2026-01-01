@@ -19,11 +19,12 @@ export interface CompanyProfile {
   fiscalYearEnd: string;
 }
 
-interface AuthContextType {
+export interface AuthContextType {
   user: User | null;
   companies: CompanyProfile[];
   activeCompany: CompanyProfile | null;
   isLoading: boolean;
+  isFirstTimeUser: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, name: string) => Promise<void>;
   logout: () => void;
@@ -31,6 +32,7 @@ interface AuthContextType {
   updateCompany: (company: CompanyProfile) => void;
   deleteCompany: (companyId: string) => void;
   setActiveCompany: (companyId: string) => void;
+  markCompanySetupComplete: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -52,6 +54,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [companies, setCompanies] = useState<CompanyProfile[]>([]);
   const [activeCompanyId, setActiveCompanyId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isFirstTimeUser, setIsFirstTimeUser] = useState(false);
 
   const activeCompany = companies.find(c => c.id === activeCompanyId) || null;
 
@@ -60,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const storedUser = localStorage.getItem("accountpro_user");
     const storedCompanies = localStorage.getItem("accountpro_companies");
     const storedActiveCompanyId = localStorage.getItem("accountpro_active_company");
+    const storedFirstTime = localStorage.getItem("accountpro_first_time");
     
     if (storedUser) {
       setUser(JSON.parse(storedUser));
@@ -73,6 +77,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } else if (parsed.length > 0) {
           setActiveCompanyId(parsed[0].id);
         }
+      }
+      
+      if (storedFirstTime === "true") {
+        setIsFirstTimeUser(true);
       }
     }
     setIsLoading(false);
@@ -128,22 +136,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(newUser);
     localStorage.setItem("accountpro_user", JSON.stringify(newUser));
     
-    // Create a default company
+    // Create a default company but mark as first-time user
     const defaultCompany: CompanyProfile = {
       ...DEFAULT_COMPANY_PROFILE,
       id: crypto.randomUUID(),
     };
     setCompanies([defaultCompany]);
     setActiveCompanyId(defaultCompany.id);
+    setIsFirstTimeUser(true);
     localStorage.setItem("accountpro_companies", JSON.stringify([defaultCompany]));
     localStorage.setItem("accountpro_active_company", defaultCompany.id);
+    localStorage.setItem("accountpro_first_time", "true");
+  };
+
+  const markCompanySetupComplete = () => {
+    setIsFirstTimeUser(false);
+    localStorage.removeItem("accountpro_first_time");
   };
 
   const logout = () => {
     setUser(null);
     setCompanies([]);
     setActiveCompanyId(null);
+    setIsFirstTimeUser(false);
     localStorage.removeItem("accountpro_user");
+    localStorage.removeItem("accountpro_first_time");
   };
 
   const addCompany = (companyData: Omit<CompanyProfile, "id">) => {
@@ -185,7 +202,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user, 
       companies,
       activeCompany,
-      isLoading, 
+      isLoading,
+      isFirstTimeUser,
       login, 
       signup, 
       logout, 
@@ -193,6 +211,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       updateCompany,
       deleteCompany,
       setActiveCompany,
+      markCompanySetupComplete,
     }}>
       {children}
     </AuthContext.Provider>
