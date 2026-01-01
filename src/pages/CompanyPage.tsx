@@ -60,6 +60,13 @@ export default function CompanyPage() {
     e.preventDefault();
     if (!activeCompany) return;
     
+    // Validate organization number: must be exactly 10 digits (formatted as XXXXXX-XXXX)
+    const orgNumDigits = formData.organizationNumber.replace(/-/g, "");
+    if (orgNumDigits.length !== 10 || !/^\d{10}$/.test(orgNumDigits)) {
+      toast.error("Organization number must be exactly 10 digits");
+      return;
+    }
+    
     updateCompany({
       ...formData,
       id: activeCompany.id,
@@ -71,6 +78,22 @@ export default function CompanyPage() {
 
   const handleChange = (field: string, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleOrganizationNumberChange = (value: string) => {
+    // Remove all non-digits
+    const digitsOnly = value.replace(/\D/g, "");
+    
+    // Limit to 10 digits
+    const limited = digitsOnly.slice(0, 10);
+    
+    // Format with hyphen after 6 digits
+    let formatted = limited;
+    if (limited.length > 6) {
+      formatted = `${limited.slice(0, 6)}-${limited.slice(6)}`;
+    }
+    
+    setFormData(prev => ({ ...prev, organizationNumber: formatted }));
   };
 
   const handleAddCompany = () => {
@@ -215,13 +238,18 @@ export default function CompanyPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="organizationNumber">Organization Number</Label>
+                      <Label htmlFor="organizationNumber">Organization Number *</Label>
                       <Input
                         id="organizationNumber"
                         value={formData.organizationNumber}
-                        onChange={(e) => handleChange("organizationNumber", e.target.value)}
+                        onChange={(e) => handleOrganizationNumberChange(e.target.value)}
                         placeholder="XXXXXX-XXXX"
+                        maxLength={11}
+                        required
                       />
+                      <p className="text-xs text-muted-foreground">
+                        {formData.organizationNumber.replace(/-/g, "").length}/10 digits
+                      </p>
                     </div>
                   </div>
 
