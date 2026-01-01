@@ -9,7 +9,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { User, LogOut, Building } from "lucide-react";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card";
+import { User, LogOut, Building, Check, ChevronDown } from "lucide-react";
 
 const navItems = [
   { name: "Economy", href: "/economy" },
@@ -21,7 +26,7 @@ const navItems = [
 export function Header() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  const { user, logout, companies, activeCompany, setActiveCompany } = useAuth();
 
   const handleLogout = () => {
     logout();
@@ -42,15 +47,60 @@ export function Header() {
 
         <nav className="flex items-center gap-8">
           {user && (
-            <Link
-              to="/company"
-              className={cn(
-                "nav-link",
-                location.pathname.startsWith("/company") && "active"
-              )}
-            >
-              Company
-            </Link>
+            <HoverCard openDelay={100} closeDelay={200}>
+              <HoverCardTrigger asChild>
+                <Link
+                  to="/company"
+                  className={cn(
+                    "nav-link flex items-center gap-1",
+                    location.pathname.startsWith("/company") && "active"
+                  )}
+                >
+                  Company
+                  <ChevronDown className="h-3 w-3" />
+                </Link>
+              </HoverCardTrigger>
+              <HoverCardContent className="w-64 p-2 bg-popover border border-border shadow-lg z-50" align="start">
+                <div className="space-y-1">
+                  <p className="text-xs text-muted-foreground px-2 py-1">Switch Company</p>
+                  {companies.map((company) => (
+                    <button
+                      key={company.id}
+                      onClick={() => setActiveCompany(company.id)}
+                      className={cn(
+                        "w-full flex items-center gap-2 px-2 py-2 rounded-md text-sm transition-colors text-left",
+                        company.id === activeCompany?.id
+                          ? "bg-secondary/10 text-secondary"
+                          : "hover:bg-muted"
+                      )}
+                    >
+                      {company.id === activeCompany?.id && (
+                        <Check className="h-4 w-4 shrink-0" />
+                      )}
+                      <div className={cn(company.id !== activeCompany?.id && "ml-6")}>
+                        <p className="font-medium truncate">
+                          {company.companyName || "Unnamed Company"}
+                        </p>
+                        {company.organizationNumber && (
+                          <p className="text-xs text-muted-foreground">
+                            {company.organizationNumber}
+                          </p>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                  <div className="border-t border-border mt-2 pt-2">
+                    <Link
+                      to="/company"
+                      className="w-full flex items-center gap-2 px-2 py-2 rounded-md text-sm hover:bg-muted transition-colors"
+                    >
+                      <Building className="h-4 w-4 ml-6" />
+                      Manage Companies
+                    </Link>
+                  </div>
+                </div>
+              </HoverCardContent>
+            </HoverCard>
           )}
           {navItems.map((item) => (
             <Link
@@ -73,7 +123,7 @@ export function Header() {
                   {user.name}
                 </Button>
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuContent align="end" className="w-48 bg-popover border border-border z-50">
                 <DropdownMenuItem onClick={() => navigate("/company")}>
                   <Building className="mr-2 h-4 w-4" />
                   Company

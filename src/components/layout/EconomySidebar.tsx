@@ -118,8 +118,8 @@ export function EconomySidebar({ collapsed, onToggle }: EconomySidebarProps) {
           );
         })}
         
-        {/* Extra space at the bottom for scrolling */}
-        <div className="h-24"></div>
+        {/* Extra space at the bottom for scrolling - 1 option height */}
+        <div className="h-16"></div>
       </nav>
 
       <div
