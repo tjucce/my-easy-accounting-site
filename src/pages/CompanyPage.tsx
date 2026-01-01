@@ -18,7 +18,7 @@ import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 
 export default function CompanyPage() {
-  const { user, companies, activeCompany, addCompany, updateCompany, deleteCompany, setActiveCompany } = useAuth();
+  const { user, companies, activeCompany, addCompany, updateCompany, deleteCompany, setActiveCompany, isFirstTimeUser, markCompanySetupComplete } = useAuth();
   const navigate = useNavigate();
   const [isNewCompany, setIsNewCompany] = useState(false);
   const [originalCompanyId, setOriginalCompanyId] = useState<string | null>(null);
@@ -60,10 +60,36 @@ export default function CompanyPage() {
     e.preventDefault();
     if (!activeCompany) return;
     
+    // Validate mandatory fields (all except VAT number)
+    if (!formData.companyName.trim()) {
+      toast.error("Company name is required");
+      return;
+    }
+    
     // Validate organization number: must be exactly 10 digits (formatted as XXXXXX-XXXX)
     const orgNumDigits = formData.organizationNumber.replace(/-/g, "");
     if (orgNumDigits.length !== 10 || !/^\d{10}$/.test(orgNumDigits)) {
       toast.error("Organization number must be exactly 10 digits");
+      return;
+    }
+    
+    if (!formData.address.trim()) {
+      toast.error("Address is required");
+      return;
+    }
+    
+    if (!formData.postalCode.trim()) {
+      toast.error("Postal code is required");
+      return;
+    }
+    
+    if (!formData.city.trim()) {
+      toast.error("City is required");
+      return;
+    }
+    
+    if (!formData.country.trim()) {
+      toast.error("Country is required");
       return;
     }
     
@@ -73,6 +99,7 @@ export default function CompanyPage() {
     });
     setIsNewCompany(false);
     setOriginalCompanyId(null);
+    markCompanySetupComplete();
     toast.success("Company saved successfully!");
   };
 

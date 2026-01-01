@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { BASAccount, DEFAULT_BAS_ACCOUNTS, getAccountClass, calculateBalance } from "@/lib/bas-accounts";
+import { useAuth } from "./AuthContext";
 
 export interface VoucherLine {
   id: string;
@@ -18,6 +19,7 @@ export interface VoucherAttachment {
 
 export interface Voucher {
   id: string;
+  companyId: string;
   voucherNumber: number;
   date: string;
   description: string;
@@ -56,7 +58,7 @@ interface AccountingContextType {
   nextVoucherNumber: number;
   addAccount: (account: BASAccount) => void;
   removeAccount: (accountNumber: string) => void;
-  createVoucher: (voucher: Omit<Voucher, "id" | "voucherNumber" | "createdAt">) => Voucher | null;
+  createVoucher: (voucher: Omit<Voucher, "id" | "companyId" | "voucherNumber" | "createdAt">) => Voucher | null;
   updateVoucher: (voucherId: string, updates: Partial<Pick<Voucher, "date" | "description" | "lines" | "attachments">>) => Voucher | null;
   deleteVoucher: (voucherId: string) => void;
   getVoucherById: (voucherId: string) => Voucher | undefined;
@@ -71,42 +73,60 @@ interface AccountingContextType {
 const AccountingContext = createContext<AccountingContextType | undefined>(undefined);
 
 export function AccountingProvider({ children }: { children: ReactNode }) {
+  const { activeCompany } = useAuth();
   const [accounts, setAccounts] = useState<BASAccount[]>([]);
   const [vouchers, setVouchers] = useState<Voucher[]>([]);
   const [nextVoucherNumber, setNextVoucherNumber] = useState(1);
 
+  const companyId = activeCompany?.id || "";
+
+  // Load data when company changes
   useEffect(() => {
-    // Load from localStorage
-    const storedAccounts = localStorage.getItem("accountpro_accounts");
-    const storedVouchers = localStorage.getItem("accountpro_vouchers");
-    const storedNextNumber = localStorage.getItem("accountpro_next_voucher");
+    if (!companyId) {
+      setAccounts(DEFAULT_BAS_ACCOUNTS);
+      setVouchers([]);
+      setNextVoucherNumber(1);
+      return;
+    }
+
+    const storedAccounts = localStorage.getItem(`accountpro_accounts_${companyId}`);
+    const storedVouchers = localStorage.getItem(`accountpro_vouchers_${companyId}`);
+    const storedNextNumber = localStorage.getItem(`accountpro_next_voucher_${companyId}`);
 
     if (storedAccounts) {
       setAccounts(JSON.parse(storedAccounts));
     } else {
       setAccounts(DEFAULT_BAS_ACCOUNTS);
-      localStorage.setItem("accountpro_accounts", JSON.stringify(DEFAULT_BAS_ACCOUNTS));
+      localStorage.setItem(`accountpro_accounts_${companyId}`, JSON.stringify(DEFAULT_BAS_ACCOUNTS));
     }
 
     if (storedVouchers) {
       setVouchers(JSON.parse(storedVouchers));
+    } else {
+      setVouchers([]);
     }
 
     if (storedNextNumber) {
       setNextVoucherNumber(parseInt(storedNextNumber));
+    } else {
+      setNextVoucherNumber(1);
     }
-  }, []);
+  }, [companyId]);
 
   const saveAccounts = (newAccounts: BASAccount[]) => {
     setAccounts(newAccounts);
-    localStorage.setItem("accountpro_accounts", JSON.stringify(newAccounts));
+    if (companyId) {
+      localStorage.setItem(`accountpro_accounts_${companyId}`, JSON.stringify(newAccounts));
+    }
   };
 
   const saveVouchers = (newVouchers: Voucher[], newNextNumber: number) => {
     setVouchers(newVouchers);
     setNextVoucherNumber(newNextNumber);
-    localStorage.setItem("accountpro_vouchers", JSON.stringify(newVouchers));
-    localStorage.setItem("accountpro_next_voucher", newNextNumber.toString());
+    if (companyId) {
+      localStorage.setItem(`accountpro_vouchers_${companyId}`, JSON.stringify(newVouchers));
+      localStorage.setItem(`accountpro_next_voucher_${companyId}`, newNextNumber.toString());
+    }
   };
 
   const addAccount = (account: BASAccount) => {
@@ -137,13 +157,14 @@ export function AccountingProvider({ children }: { children: ReactNode }) {
     return { isValid, totalDebit, totalCredit, difference };
   };
 
-  const createVoucher = (voucherData: Omit<Voucher, "id" | "voucherNumber" | "createdAt">) => {
+  const createVoucher = (voucherData: Omit<Voucher, "id" | "companyId" | "voucherNumber" | "createdAt">) => {
     const validation = validateVoucher(voucherData.lines);
     if (!validation.isValid) return null;
 
     const newVoucher: Voucher = {
       ...voucherData,
       id: crypto.randomUUID(),
+      companyId,
       voucherNumber: nextVoucherNumber,
       createdAt: new Date().toISOString(),
     };
