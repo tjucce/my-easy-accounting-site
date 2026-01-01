@@ -1,16 +1,30 @@
-import { ReactNode } from "react";
+import { useState } from "react";
+import { Outlet } from "react-router-dom";
+import { Header } from "./Header";
 import { EconomySidebar } from "./EconomySidebar";
+import { cn } from "@/lib/utils";
 
-interface EconomyLayoutProps {
-  children: ReactNode;
-}
+export function EconomyLayout() {
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
-export function EconomyLayout({ children }: EconomyLayoutProps) {
   return (
-    <div className="flex min-h-[calc(100vh-5rem)]">
-      <EconomySidebar />
-      <div className="flex-1 overflow-auto">
-        {children}
+    <div className="min-h-screen flex flex-col">
+      <Header />
+      <div className="flex flex-1">
+        <EconomySidebar
+          collapsed={sidebarCollapsed}
+          onToggle={() => setSidebarCollapsed(!sidebarCollapsed)}
+        />
+        <main
+          className={cn(
+            "flex-1 transition-all duration-300 ease-in-out",
+            sidebarCollapsed ? "ml-sidebar-collapsed" : "ml-sidebar"
+          )}
+        >
+          <div className="container py-8">
+            <Outlet />
+          </div>
+        </main>
       </div>
     </div>
   );
