@@ -193,14 +193,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const deleteCompany = (companyId: string) => {
-    if (companies.length <= 1) return; // Can't delete last company
     const newCompanies = companies.filter(c => c.id !== companyId);
-    saveCompanies(newCompanies);
     
-    // If deleted active company, switch to first remaining
-    if (activeCompanyId === companyId && newCompanies.length > 0) {
-      setActiveCompanyId(newCompanies[0].id);
-      localStorage.setItem("accountpro_active_company", newCompanies[0].id);
+    if (newCompanies.length === 0) {
+      // Create a fresh empty company when deleting the last one
+      const freshCompany: CompanyProfile = {
+        ...DEFAULT_COMPANY_PROFILE,
+        id: crypto.randomUUID(),
+      };
+      saveCompanies([freshCompany]);
+      setActiveCompanyId(freshCompany.id);
+      localStorage.setItem("accountpro_active_company", freshCompany.id);
+      setIsFirstTimeUser(true);
+      localStorage.setItem("accountpro_first_time", "true");
+    } else {
+      saveCompanies(newCompanies);
+      // If deleted active company, switch to first remaining
+      if (activeCompanyId === companyId) {
+        setActiveCompanyId(newCompanies[0].id);
+        localStorage.setItem("accountpro_active_company", newCompanies[0].id);
+      }
     }
   };
 

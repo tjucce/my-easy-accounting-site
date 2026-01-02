@@ -146,61 +146,54 @@ export default function AccountingPage() {
               <CardDescription>Filter vouchers by date range</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-wrap gap-4 items-center">
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">From:</span>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className={cn("w-[180px] justify-start text-left font-normal", !voucherStartDate && "text-muted-foreground")}>
-                        <Calendar className="mr-2 h-4 w-4" />
-                        {voucherStartDate ? format(voucherStartDate, "PPP") : "Pick a date"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <CalendarComponent
-                        mode="single"
-                        selected={voucherStartDate}
-                        onSelect={setVoucherStartDate}
-                        initialFocus
-                        className="p-3 pointer-events-auto"
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <span className="text-sm text-muted-foreground">To:</span>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button variant="outline" className={cn("w-[180px] justify-start text-left font-normal", !voucherEndDate && "text-muted-foreground")}>
-                        <Calendar className="mr-2 h-4 w-4" />
-                        {voucherEndDate ? format(voucherEndDate, "PPP") : "Pick a date"}
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <CalendarComponent
-                        mode="single"
-                        selected={voucherEndDate}
-                        onSelect={setVoucherEndDate}
-                        initialFocus
-                        className="p-3 pointer-events-auto"
-                      />
-                    </PopoverContent>
-                  </Popover>
-                </div>
-
-                <Button variant="outline" onClick={() => {
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm text-muted-foreground">From:</span>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className={cn("w-[130px] justify-start text-left font-normal", !voucherStartDate && "text-muted-foreground")}>
+                      <Calendar className="mr-1 h-3 w-3" />
+                      {voucherStartDate ? format(voucherStartDate, "yyyy-MM-dd") : "Start"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <CalendarComponent
+                      mode="single"
+                      selected={voucherStartDate}
+                      onSelect={setVoucherStartDate}
+                      initialFocus
+                      className="p-3 pointer-events-auto"
+                    />
+                  </PopoverContent>
+                </Popover>
+                <span className="text-sm text-muted-foreground">to</span>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" size="sm" className={cn("w-[130px] justify-start text-left font-normal", !voucherEndDate && "text-muted-foreground")}>
+                      <Calendar className="mr-1 h-3 w-3" />
+                      {voucherEndDate ? format(voucherEndDate, "yyyy-MM-dd") : "End"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0" align="start">
+                    <CalendarComponent
+                      mode="single"
+                      selected={voucherEndDate}
+                      onSelect={setVoucherEndDate}
+                      initialFocus
+                      className="p-3 pointer-events-auto"
+                    />
+                  </PopoverContent>
+                </Popover>
+                <Button variant="outline" size="sm" onClick={() => {
                   setVoucherStartDate(new Date(new Date().getFullYear(), 0, 1));
                   setVoucherEndDate(new Date(new Date().getFullYear(), 11, 31));
                 }}>
                   Current Year
                 </Button>
-                
-                <Button variant="ghost" onClick={() => {
+                <Button variant="ghost" size="sm" onClick={() => {
                   setVoucherStartDate(undefined);
                   setVoucherEndDate(undefined);
                 }}>
-                  Clear Filter
+                  Clear
                 </Button>
               </div>
             </CardContent>
