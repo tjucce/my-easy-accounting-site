@@ -154,14 +154,13 @@ export default function CompanyPage() {
 
   const handleDeleteCompany = () => {
     if (!activeCompany) return;
-    if (companies.length <= 1) {
-      toast.error("Cannot delete the only company");
-      return;
-    }
     
     deleteCompany(activeCompany.id);
     toast.success("Company deleted");
   };
+
+  // Check if this is an existing saved company (has org number saved)
+  const isExistingCompany = activeCompany && activeCompany.organizationNumber.replace(/-/g, "").length === 10;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -239,17 +238,15 @@ export default function CompanyPage() {
                       This information will be used in reports and invoices
                     </CardDescription>
                   </div>
-                  {companies.length > 1 && (
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
-                      className="text-destructive hover:text-destructive"
-                      onClick={handleDeleteCompany}
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Delete
-                    </Button>
-                  )}
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="text-destructive hover:text-destructive"
+                  onClick={handleDeleteCompany}
+                >
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Delete
+                </Button>
                 </div>
               </CardHeader>
               <CardContent>
@@ -273,10 +270,18 @@ export default function CompanyPage() {
                         placeholder="XXXXXX-XXXX"
                         maxLength={11}
                         required
+                        disabled={isExistingCompany}
+                        className={isExistingCompany ? "bg-muted cursor-not-allowed" : ""}
                       />
-                      <p className="text-xs text-muted-foreground">
-                        {formData.organizationNumber.replace(/-/g, "").length}/10 digits
-                      </p>
+                      {isExistingCompany ? (
+                        <p className="text-xs text-muted-foreground">
+                          Organization number cannot be changed after creation
+                        </p>
+                      ) : (
+                        <p className="text-xs text-muted-foreground">
+                          {formData.organizationNumber.replace(/-/g, "").length}/10 digits
+                        </p>
+                      )}
                     </div>
                   </div>
 
