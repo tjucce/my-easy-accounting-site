@@ -108,13 +108,25 @@ function CustomerForm({
 
       {type === "company" && (
         <div className="space-y-2">
-          <Label htmlFor="orgNum">Organization Number</Label>
+          <Label htmlFor="orgNum">Organization Number (Organisationsnummer)</Label>
           <Input
             id="orgNum"
             value={organizationNumber}
-            onChange={(e) => setOrganizationNumber(e.target.value)}
+            onChange={(e) => {
+              // Format as XXXXXX-XXXX
+              const value = e.target.value.replace(/\D/g, "");
+              if (value.length <= 10) {
+                if (value.length > 6) {
+                  setOrganizationNumber(value.slice(0, 6) + "-" + value.slice(6));
+                } else {
+                  setOrganizationNumber(value);
+                }
+              }
+            }}
             placeholder="XXXXXX-XXXX"
+            maxLength={11}
           />
+          <p className="text-xs text-muted-foreground">Format: 123456-7890</p>
         </div>
       )}
 
