@@ -1,11 +1,25 @@
-import { useState } from "react";
-import { Outlet } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Outlet, useNavigate } from "react-router-dom";
 import { Header } from "./Header";
 import { EconomySidebar } from "./EconomySidebar";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/AuthContext";
 
 export function EconomyLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const { user, hasValidCompany, isLoading } = useAuth();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (!isLoading && user && !hasValidCompany) {
+      navigate("/company", { replace: true });
+    }
+  }, [user, hasValidCompany, isLoading, navigate]);
+
+  // Show nothing while checking or redirecting
+  if (!isLoading && user && !hasValidCompany) {
+    return null;
+  }
 
   return (
     <div className="min-h-screen flex flex-col">

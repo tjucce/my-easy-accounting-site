@@ -25,6 +25,7 @@ export interface AuthContextType {
   activeCompany: CompanyProfile | null;
   isLoading: boolean;
   isFirstTimeUser: boolean;
+  hasValidCompany: boolean;
   login: (email: string, password: string) => Promise<void>;
   signup: (email: string, password: string, name: string) => Promise<void>;
   logout: () => void;
@@ -57,6 +58,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isFirstTimeUser, setIsFirstTimeUser] = useState(false);
 
   const activeCompany = companies.find(c => c.id === activeCompanyId) || null;
+  
+  // Check if the active company has all mandatory fields filled
+  const hasValidCompany = !!(
+    activeCompany &&
+    activeCompany.companyName.trim() &&
+    activeCompany.organizationNumber.trim() &&
+    activeCompany.address.trim() &&
+    activeCompany.postalCode.trim() &&
+    activeCompany.city.trim() &&
+    activeCompany.country.trim() &&
+    activeCompany.fiscalYearStart.trim() &&
+    activeCompany.fiscalYearEnd.trim()
+  );
 
   useEffect(() => {
     // Load from localStorage on mount
@@ -204,6 +218,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       activeCompany,
       isLoading,
       isFirstTimeUser,
+      hasValidCompany,
       login, 
       signup, 
       logout, 

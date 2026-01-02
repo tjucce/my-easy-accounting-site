@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { BookOpen, FileSpreadsheet, ListChecks, Calculator, Lock, Plus, Eye } from "lucide-react";
+import { BookOpen, FileSpreadsheet, ListChecks, Calculator, Lock, Plus, Eye, Calendar } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -7,6 +7,11 @@ import { useAccounting, Voucher } from "@/contexts/AccountingContext";
 import { VoucherForm } from "@/components/accounting/VoucherForm";
 import { VoucherDetails } from "@/components/accounting/VoucherDetails";
 import { formatAmount } from "@/lib/bas-accounts";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { cn } from "@/lib/utils";
+import { format } from "date-fns";
 
 const accountingFeatures = [
   {
@@ -42,6 +47,18 @@ export default function AccountingPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedVoucher, setSelectedVoucher] = useState<Voucher | null>(null);
   const [editingVoucher, setEditingVoucher] = useState<Voucher | null>(null);
+  
+  // Voucher period filter
+  const [voucherStartDate, setVoucherStartDate] = useState<Date | undefined>(new Date(new Date().getFullYear(), 0, 1));
+  const [voucherEndDate, setVoucherEndDate] = useState<Date | undefined>(new Date(new Date().getFullYear(), 11, 31));
+
+  // Filter vouchers by date
+  const filteredVouchers = vouchers.filter((voucher) => {
+    const voucherDate = new Date(voucher.date);
+    if (voucherStartDate && voucherDate < voucherStartDate) return false;
+    if (voucherEndDate && voucherDate > voucherEndDate) return false;
+    return true;
+  });
 
   const handleVoucherClick = (voucher: Voucher) => {
     setSelectedVoucher(voucher);
@@ -122,8 +139,75 @@ export default function AccountingPage() {
       {/* Authenticated: Show vouchers list */}
       {user && vouchers.length > 0 && !showCreateForm && !selectedVoucher && !editingVoucher && (
         <section>
+          {/* Voucher Period Filter */}
+          <Card className="mb-6">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">Voucher Period</CardTitle>
+              <CardDescription>Filter vouchers by date range</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-4 items-center">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">From:</span>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className={cn("w-[180px] justify-start text-left font-normal", !voucherStartDate && "text-muted-foreground")}>
+                        <Calendar className="mr-2 h-4 w-4" />
+                        {voucherStartDate ? format(voucherStartDate, "PPP") : "Pick a date"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <CalendarComponent
+                        mode="single"
+                        selected={voucherStartDate}
+                        onSelect={setVoucherStartDate}
+                        initialFocus
+                        className="p-3 pointer-events-auto"
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-muted-foreground">To:</span>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className={cn("w-[180px] justify-start text-left font-normal", !voucherEndDate && "text-muted-foreground")}>
+                        <Calendar className="mr-2 h-4 w-4" />
+                        {voucherEndDate ? format(voucherEndDate, "PPP") : "Pick a date"}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-0" align="start">
+                      <CalendarComponent
+                        mode="single"
+                        selected={voucherEndDate}
+                        onSelect={setVoucherEndDate}
+                        initialFocus
+                        className="p-3 pointer-events-auto"
+                      />
+                    </PopoverContent>
+                  </Popover>
+                </div>
+
+                <Button variant="outline" onClick={() => {
+                  setVoucherStartDate(new Date(new Date().getFullYear(), 0, 1));
+                  setVoucherEndDate(new Date(new Date().getFullYear(), 11, 31));
+                }}>
+                  Current Year
+                </Button>
+                
+                <Button variant="ghost" onClick={() => {
+                  setVoucherStartDate(undefined);
+                  setVoucherEndDate(undefined);
+                }}>
+                  Clear Filter
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+
           <h2 className="text-2xl font-semibold text-foreground mb-4">
-            Recent Vouchers
+            Vouchers ({filteredVouchers.length})
           </h2>
           <div className="bg-card rounded-xl border border-border overflow-hidden">
             <table className="w-full">
@@ -137,7 +221,7 @@ export default function AccountingPage() {
                 </tr>
               </thead>
               <tbody>
-                {vouchers.slice(-10).reverse().map((voucher) => {
+                {filteredVouchers.slice(-10).reverse().map((voucher) => {
                   const total = voucher.lines.reduce((sum, l) => sum + l.debit, 0);
                   return (
                     <tr 
