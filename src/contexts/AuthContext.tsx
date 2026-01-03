@@ -184,6 +184,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
     const newCompanies = [...companies, newCompany];
     saveCompanies(newCompanies);
+    // Also immediately set as active since saveCompanies is async
+    setActiveCompanyId(newCompany.id);
+    localStorage.setItem("accountpro_active_company", newCompany.id);
     return newCompany;
   };
 
