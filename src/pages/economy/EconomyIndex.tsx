@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
+import { useMemo } from "react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   BookOpen,
   FileText,
@@ -8,7 +10,17 @@ import {
   BarChart3,
   Wallet,
   ArrowRight,
+  TrendingUp,
+  TrendingDown,
 } from "lucide-react";
+import {
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+} from "@/components/ui/chart";
+import { Area, AreaChart, XAxis, YAxis, ReferenceLine, ResponsiveContainer } from "recharts";
+import { useAccounting } from "@/contexts/AccountingContext";
+import { format, subMonths, startOfMonth, endOfMonth } from "date-fns";
 
 const economyModules = [
   {
@@ -61,7 +73,40 @@ const economyModules = [
   },
 ];
 
+const chartConfig = {
+  netResult: {
+    label: "Net Result",
+    color: "hsl(var(--secondary))",
+  },
+};
+
 export default function EconomyIndex() {
+  const { getIncomeStatement } = useAccounting();
+
+  const monthlyData = useMemo(() => {
+    const data = [];
+    const now = new Date();
+    
+    for (let i = 11; i >= 0; i--) {
+      const monthDate = subMonths(now, i);
+      const monthStart = format(startOfMonth(monthDate), "yyyy-MM-dd");
+      const monthEnd = format(endOfMonth(monthDate), "yyyy-MM-dd");
+      
+      const { netResult } = getIncomeStatement(monthStart, monthEnd);
+      
+      data.push({
+        month: format(monthDate, "MMM"),
+        fullMonth: format(monthDate, "MMMM yyyy"),
+        netResult: netResult,
+      });
+    }
+    
+    return data;
+  }, [getIncomeStatement]);
+
+  const currentMonthResult = monthlyData[monthlyData.length - 1]?.netResult || 0;
+  const hasData = monthlyData.some(d => d.netResult !== 0);
+
   return (
     <div className="space-y-8 animate-fade-in">
       <div className="space-y-2">
@@ -70,6 +115,82 @@ export default function EconomyIndex() {
           A complete suite of tools for Swedish business accounting. Explore each module to learn more.
         </p>
       </div>
+
+      {/* Monthly Net Result Chart */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg font-semibold">Monthly Net Result</CardTitle>
+            <div className="flex items-center gap-2">
+              {currentMonthResult >= 0 ? (
+                <TrendingUp className="h-5 w-5 text-green-500" />
+              ) : (
+                <TrendingDown className="h-5 w-5 text-destructive" />
+              )}
+              <span className={`text-lg font-bold ${currentMonthResult >= 0 ? "text-green-500" : "text-destructive"}`}>
+                {currentMonthResult >= 0 ? "+" : ""}{currentMonthResult.toLocaleString("sv-SE", { minimumFractionDigits: 2 })} SEK
+              </span>
+            </div>
+          </div>
+          <p className="text-sm text-muted-foreground">Last 12 months income minus expenses</p>
+        </CardHeader>
+        <CardContent>
+          {hasData ? (
+            <ChartContainer config={chartConfig} className="h-[200px] w-full">
+              <AreaChart data={monthlyData} margin={{ top: 20, right: 20, left: 20, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="fillPositive" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="hsl(142, 76%, 36%)" stopOpacity={0.4} />
+                    <stop offset="100%" stopColor="hsl(142, 76%, 36%)" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="fillNegative" x1="0" y1="1" x2="0" y2="0">
+                    <stop offset="0%" stopColor="hsl(var(--destructive))" stopOpacity={0.4} />
+                    <stop offset="100%" stopColor="hsl(var(--destructive))" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <XAxis 
+                  dataKey="month" 
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
+                />
+                <YAxis 
+                  tickLine={false}
+                  axisLine={false}
+                  tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 12 }}
+                  tickFormatter={(value) => `${(value / 1000).toFixed(0)}k`}
+                />
+                <ReferenceLine y={0} stroke="hsl(var(--border))" strokeDasharray="3 3" />
+                <ChartTooltip 
+                  content={
+                    <ChartTooltipContent 
+                      formatter={(value, name) => (
+                        <div className="flex items-center gap-2">
+                          <span className={Number(value) >= 0 ? "text-green-500" : "text-destructive"}>
+                            {Number(value) >= 0 ? "+" : ""}{Number(value).toLocaleString("sv-SE", { minimumFractionDigits: 2 })} SEK
+                          </span>
+                        </div>
+                      )}
+                      labelFormatter={(label, payload) => payload[0]?.payload?.fullMonth || label}
+                    />
+                  }
+                />
+                <Area
+                  type="monotone"
+                  dataKey="netResult"
+                  stroke="hsl(var(--secondary))"
+                  strokeWidth={2}
+                  fill="url(#fillPositive)"
+                />
+              </AreaChart>
+            </ChartContainer>
+          ) : (
+            <div className="h-[200px] flex items-center justify-center text-muted-foreground">
+              <p>No voucher data yet. Create vouchers to see your monthly results.</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
         {economyModules.map((module, index) => {

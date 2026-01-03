@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Wallet, Plus, Info, Lock, Eye } from "lucide-react";
+import { Wallet, Info, Lock, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -39,12 +39,6 @@ export default function AccountsPage() {
             </div>
           </div>
           
-          {user && (
-            <Button onClick={() => setAddDialogOpen(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Account
-            </Button>
-          )}
         </div>
       </div>
 
