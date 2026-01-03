@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/select";
 import { useAuth, CompanyProfile } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { Building, Save, ArrowLeft, Plus, Trash2, Check } from "lucide-react";
+import { Building, Save, ArrowLeft, Plus, Trash2, Check, Upload } from "lucide-react";
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
 
@@ -124,7 +124,7 @@ export default function CompanyPage() {
   };
 
   const handleAddCompany = () => {
-    setOriginalCompanyId(activeCompany?.id || null);
+    // Don't store original - we switch to new company immediately
     const newCompany = addCompany({
       companyName: "",
       organizationNumber: "",
@@ -138,7 +138,21 @@ export default function CompanyPage() {
     });
     setActiveCompany(newCompany.id);
     setIsNewCompany(true);
+    setOriginalCompanyId(null);
     toast.info("Fill in company details and save");
+  };
+
+  const handleSIEUpload = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = ".se,.si,.sie";
+    input.onchange = (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (file) {
+        toast.info(`SIE file "${file.name}" selected. Import functionality coming soon.`);
+      }
+    };
+    input.click();
   };
 
   const handleCancelNewCompany = () => {
@@ -355,6 +369,11 @@ export default function CompanyPage() {
                       />
                     </div>
                   </div>
+
+                  <Button type="button" variant="outline" onClick={handleSIEUpload} className="w-full">
+                    <Upload className="h-4 w-4 mr-2" />
+                    Add SIE File
+                  </Button>
 
                   <div className="flex gap-3">
                     {isNewCompany && (
