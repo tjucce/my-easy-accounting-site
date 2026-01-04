@@ -252,6 +252,56 @@ export interface SIEExportOptions {
   organizationNumber: string;
   fiscalYearStart: string;
   fiscalYearEnd: string;
+  address?: string;
+  postalCode?: string;
+  city?: string;
+}
+
+/**
+ * Encode Swedish characters to PC8 format
+ * å → „, ä → „, ö → "
+ */
+function encodePC8(text: string): string {
+  return text
+    .replace(/å/g, '„')
+    .replace(/ä/g, '„')
+    .replace(/ö/g, '"')
+    .replace(/Å/g, 'Å')
+    .replace(/Ä/g, 'Ä')
+    .replace(/Ö/g, 'Ö');
+}
+
+/**
+ * Get account type for SIE KTYP
+ * T = Assets (Tillgångar) - accounts 1xxx
+ * S = Liabilities/Equity (Skulder) - accounts 2xxx
+ * I = Income (Intäkter) - accounts 3xxx
+ * K = Expenses (Kostnader) - accounts 4xxx-8xxx
+ */
+function getAccountType(accountNumber: string): string {
+  const firstDigit = accountNumber.charAt(0);
+  switch (firstDigit) {
+    case '1': return 'T'; // Assets
+    case '2': return 'S'; // Liabilities/Equity
+    case '3': return 'I'; // Income
+    case '4':
+    case '5':
+    case '6':
+    case '7':
+    case '8': return 'K'; // Expenses
+    default: return 'T';
+  }
+}
+
+/**
+ * Format organization number to Swedish format (xxxxxx-xxxx)
+ */
+function formatOrgNumber(orgNr: string): string {
+  const cleaned = orgNr.replace(/\D/g, '');
+  if (cleaned.length === 10) {
+    return `${cleaned.substring(0, 6)}-${cleaned.substring(6)}`;
+  }
+  return orgNr;
 }
 
 /**
@@ -263,57 +313,135 @@ export function generateSIEFile(
   options: SIEExportOptions
 ): string {
   const lines: string[] = [];
+  const today = new Date().toISOString().split('T')[0];
+
+  // Determine fiscal year dates
+  const fiscalStartMonth = options.fiscalYearStart.substring(5, 7);
+  const fiscalStartDay = options.fiscalYearStart.substring(8, 10);
+  const fiscalEndMonth = options.fiscalYearEnd.substring(5, 7);
+  const fiscalEndDay = options.fiscalYearEnd.substring(8, 10);
+  
+  const currentYear = new Date().getFullYear();
+  const previousYear = currentYear - 1;
+  
+  const currentYearStart = `${currentYear}${fiscalStartMonth}${fiscalStartDay}`;
+  const currentYearEnd = `${currentYear}${fiscalEndMonth}${fiscalEndDay}`;
+  const previousYearStart = `${previousYear}${fiscalStartMonth}${fiscalStartDay}`;
+  const previousYearEnd = `${previousYear}${fiscalEndMonth}${fiscalEndDay}`;
+
+  // Filter vouchers into current and previous year
+  const currentYearStartDate = `${currentYear}-${fiscalStartMonth}-${fiscalStartDay}`;
+  const currentYearVouchers = vouchers.filter(v => v.date >= currentYearStartDate);
+  const previousYearVouchers = vouchers.filter(v => v.date < currentYearStartDate);
 
   // Header
   lines.push('#FLAGGA 0');
   lines.push('#FORMAT PC8');
   lines.push('#SIETYP 4');
   lines.push('#PROGRAM "AccountPro" 1.0');
-  lines.push(`#GEN ${formatSIEDate(new Date().toISOString().split('T')[0])}`);
+  lines.push(`#GEN ${formatSIEDate(today)}`);
 
   // Company info
-  lines.push(`#FNAMN "${options.companyName}"`);
+  lines.push(`#FNAMN "${encodePC8(options.companyName)}"`);
   if (options.organizationNumber) {
-    lines.push(`#ORGNR ${options.organizationNumber.replace(/-/g, "")}`);
+    lines.push(`#ORGNR ${formatOrgNumber(options.organizationNumber)}`);
   }
+  
+  // Address
+  const address = options.address || '';
+  const postalCity = options.postalCode && options.city 
+    ? `"${options.postalCode} ${options.city}"` 
+    : '""';
+  lines.push(`#ADRESS "${encodePC8(address)}" ${postalCity}`);
 
-  // Fiscal year
-  const currentYear = new Date().getFullYear();
-  const fiscalStart = `${currentYear}${options.fiscalYearStart.replace(/-/g, "")}`;
-  const fiscalEnd = `${currentYear}${options.fiscalYearEnd.replace(/-/g, "")}`;
-  lines.push(`#RAR 0 ${fiscalStart} ${fiscalEnd}`);
+  // Fiscal years (current and previous)
+  lines.push(`#RAR 0 ${currentYearStart} ${currentYearEnd}`);
+  lines.push(`#RAR -1 ${previousYearStart} ${previousYearEnd}`);
+  
+  // Currency and chart type
+  lines.push('#VALUTA SEK');
+  lines.push('#KPTYP EUBAS97');
 
-  // Account definitions - only include accounts used in vouchers
+  // Collect all used accounts
   const usedAccountNumbers = new Set<string>();
   vouchers.forEach(v => {
     v.lines.forEach(l => usedAccountNumbers.add(l.accountNumber));
   });
 
-  accounts
-    .filter(a => usedAccountNumbers.has(a.number))
-    .sort((a, b) => a.number.localeCompare(b.number))
-    .forEach(account => {
-      lines.push(`#KONTO ${account.number} "${account.name}"`);
+  // Calculate balances from previous year vouchers
+  const previousYearBalances: Record<string, number> = {};
+  previousYearVouchers.forEach(v => {
+    v.lines.forEach(l => {
+      if (!previousYearBalances[l.accountNumber]) {
+        previousYearBalances[l.accountNumber] = 0;
+      }
+      // Debit adds, Credit subtracts
+      previousYearBalances[l.accountNumber] += l.debit - l.credit;
     });
+  });
 
-  // Add blank line before vouchers
-  lines.push('');
+  // Calculate current year balances
+  const currentYearBalances: Record<string, number> = {};
+  currentYearVouchers.forEach(v => {
+    v.lines.forEach(l => {
+      if (!currentYearBalances[l.accountNumber]) {
+        currentYearBalances[l.accountNumber] = 0;
+      }
+      currentYearBalances[l.accountNumber] += l.debit - l.credit;
+    });
+  });
 
-  // Vouchers
-  vouchers
+  // Account definitions with types, IB, and UB
+  const sortedAccounts = accounts
+    .filter(a => usedAccountNumbers.has(a.number))
+    .sort((a, b) => a.number.localeCompare(b.number));
+
+  sortedAccounts.forEach(account => {
+    const accountType = getAccountType(account.number);
+    const prevBalance = previousYearBalances[account.number] || 0;
+    const currBalance = currentYearBalances[account.number] || 0;
+    
+    // Account definition
+    lines.push(`#KONTO ${account.number} "${encodePC8(account.name)}"`);
+    lines.push(`#KTYP ${account.number} ${accountType}`);
+    
+    // Opening balance (IB) for current year = previous year ending balance
+    lines.push(`#IB 0 ${account.number} ${prevBalance.toFixed(2)}`);
+    
+    // Previous year closing balance (UB -1)
+    lines.push(`#UB -1 ${account.number} ${prevBalance.toFixed(2)}`);
+  });
+
+  // Current year closing balances (UB 0) and results (RES 0)
+  sortedAccounts.forEach(account => {
+    const accountType = getAccountType(account.number);
+    const prevBalance = previousYearBalances[account.number] || 0;
+    const currChange = currentYearBalances[account.number] || 0;
+    const totalBalance = prevBalance + currChange;
+    
+    if (accountType === 'T' || accountType === 'S') {
+      // Balance sheet accounts use UB
+      lines.push(`#UB 0 ${account.number} ${totalBalance.toFixed(2)}`);
+    } else {
+      // Income/Expense accounts use RES
+      lines.push(`#RES 0 ${account.number} ${currChange.toFixed(2)}`);
+    }
+  });
+
+  // Only current year vouchers
+  currentYearVouchers
     .sort((a, b) => a.date.localeCompare(b.date) || a.voucherNumber - b.voucherNumber)
     .forEach(voucher => {
-      const series = "A"; // Default series
+      const series = "A";
       const dateStr = formatSIEDate(voucher.date);
-      const description = voucher.description.replace(/"/g, '\\"');
+      const description = encodePC8(voucher.description.replace(/"/g, '\\"'));
       
       lines.push(`#VER ${series} ${voucher.voucherNumber} ${dateStr} "${description}"`);
       lines.push('{');
       
       voucher.lines.forEach(line => {
-        // Positive amount = debit, negative amount = credit
         const amount = line.debit > 0 ? line.debit : -line.credit;
-        lines.push(`\t#TRANS ${line.accountNumber} {} ${amount.toFixed(2)}`);
+        lines.push(`   #TRANS ${line.accountNumber} {} ${amount.toFixed(2)}`);
       });
       
       lines.push('}');
