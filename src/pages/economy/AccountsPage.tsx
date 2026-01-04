@@ -1,12 +1,16 @@
-import { useState } from "react";
-import { Wallet, Info, Lock, Eye } from "lucide-react";
+import { useState, useMemo } from "react";
+import { Wallet, Info, Lock, Eye, Search, Check, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAccounting } from "@/contexts/AccountingContext";
 import { AddAccountDialog } from "@/components/accounting/AddAccountDialog";
 import { AccountStatementDialog } from "@/components/accounting/AccountStatementDialog";
 import { getAccountClassName } from "@/lib/bas-accounts";
+import { cn } from "@/lib/utils";
 
 const accountClasses = [
   { range: "1000-1999", name: "Assets (Tillgångar)", description: "Fixed assets, current assets, cash and bank accounts" },
@@ -21,6 +25,19 @@ export default function AccountsPage() {
   const { accounts } = useAccounting();
   const [addDialogOpen, setAddDialogOpen] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
+  const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Filter accounts based on search query
+  const filteredAccounts = useMemo(() => {
+    if (!searchQuery) return accounts;
+    const query = searchQuery.toLowerCase();
+    return accounts.filter(
+      (account) =>
+        account.number.toLowerCase().includes(query) ||
+        account.name.toLowerCase().includes(query)
+    );
+  }, [accounts, searchQuery]);
 
   return (
     <div className="space-y-12 animate-fade-in">
@@ -44,9 +61,66 @@ export default function AccountsPage() {
 
       {/* Accounts List */}
       <section>
-        <h2 className="text-2xl font-semibold text-foreground mb-6">
-          {user ? "Your Accounts" : "System Accounts"}
-        </h2>
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-semibold text-foreground">
+            {user ? "Your Accounts" : "System Accounts"}
+          </h2>
+          <Popover open={searchOpen} onOpenChange={setSearchOpen}>
+            <PopoverTrigger asChild>
+              <Button variant="outline" className="w-[280px] justify-between">
+                {searchQuery ? (
+                  <span className="text-foreground">{searchQuery}</span>
+                ) : (
+                  <span className="text-muted-foreground">Search accounts...</span>
+                )}
+                <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[400px] p-0" align="end">
+              <Command>
+                <CommandInput 
+                  placeholder="Search by number or name..." 
+                  value={searchQuery}
+                  onValueChange={setSearchQuery}
+                />
+                <CommandList>
+                  <CommandEmpty>No account found.</CommandEmpty>
+                  <CommandGroup className="max-h-64 overflow-auto">
+                    {accounts.map((account) => (
+                      <CommandItem
+                        key={account.number}
+                        value={`${account.number} ${account.name}`}
+                        onSelect={() => {
+                          setSearchQuery(`${account.number} ${account.name}`);
+                          setSearchOpen(false);
+                        }}
+                      >
+                        <Check
+                          className={cn(
+                            "mr-2 h-4 w-4",
+                            searchQuery.includes(account.number) ? "opacity-100" : "opacity-0"
+                          )}
+                        />
+                        <span className="font-mono">{account.number}</span>
+                        <span className="ml-2 text-muted-foreground">{account.name}</span>
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
+        </div>
+        {searchQuery && (
+          <div className="mb-4 flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">
+              Showing {filteredAccounts.length} of {accounts.length} accounts
+            </span>
+            <Button variant="ghost" size="sm" onClick={() => setSearchQuery("")}>
+              Clear filter
+            </Button>
+          </div>
+        )}
         <div className="bg-card rounded-xl border border-border overflow-hidden">
           <table className="w-full">
             <thead>
@@ -58,7 +132,7 @@ export default function AccountsPage() {
               </tr>
             </thead>
             <tbody>
-              {accounts.map((account) => (
+              {filteredAccounts.map((account) => (
                 <tr key={account.number} className="border-b border-border/50">
                   <td className="py-3 px-4 font-mono text-secondary font-semibold">
                     {account.number}

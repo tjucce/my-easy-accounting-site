@@ -1,10 +1,8 @@
 import { useState } from "react";
-import { BarChart3, TrendingUp, FileText, Calendar, Download, Lock } from "lucide-react";
+import { BarChart3, TrendingUp, FileText, Download, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { Link } from "react-router-dom";
@@ -13,6 +11,7 @@ import { useAccounting, GeneralLedgerEntry } from "@/contexts/AccountingContext"
 import { formatAmount, getAccountClassName, getAccountClass } from "@/lib/bas-accounts";
 import { exportIncomeStatementPDF, exportBalanceSheetPDF } from "@/lib/pdf-export";
 import { toast } from "sonner";
+import { DateInputPicker } from "@/components/ui/date-input-picker";
 
 export default function AnnualReportsPage() {
   const { user, activeCompany } = useAuth();
@@ -134,41 +133,17 @@ export default function AnnualReportsPage() {
         <CardContent>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm text-muted-foreground">From:</span>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className={cn("w-[130px] justify-start text-left font-normal", !startDate && "text-muted-foreground")}>
-                  <Calendar className="mr-1 h-3 w-3" />
-                  {startDate ? format(startDate, "yyyy-MM-dd") : "Start"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <CalendarComponent
-                  mode="single"
-                  selected={startDate}
-                  onSelect={setStartDate}
-                  initialFocus
-                  className="p-3 pointer-events-auto"
-                />
-              </PopoverContent>
-            </Popover>
+            <DateInputPicker
+              date={startDate}
+              onDateChange={setStartDate}
+              placeholder="YYYY-MM-DD"
+            />
             <span className="text-sm text-muted-foreground">to</span>
-            <Popover>
-              <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className={cn("w-[130px] justify-start text-left font-normal", !endDate && "text-muted-foreground")}>
-                  <Calendar className="mr-1 h-3 w-3" />
-                  {endDate ? format(endDate, "yyyy-MM-dd") : "End"}
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent className="w-auto p-0" align="start">
-                <CalendarComponent
-                  mode="single"
-                  selected={endDate}
-                  onSelect={setEndDate}
-                  initialFocus
-                  className="p-3 pointer-events-auto"
-                />
-              </PopoverContent>
-            </Popover>
+            <DateInputPicker
+              date={endDate}
+              onDateChange={setEndDate}
+              placeholder="YYYY-MM-DD"
+            />
             <Button variant="outline" size="sm" onClick={() => {
               setStartDate(new Date(new Date().getFullYear(), 0, 1));
               setEndDate(new Date(new Date().getFullYear(), 11, 31));
@@ -214,6 +189,25 @@ export default function AnnualReportsPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* Net Result - Shown first for quick overview */}
+              <div className={cn(
+                "rounded-lg p-6",
+                incomeStatement.netResult >= 0 ? "bg-success/10" : "bg-destructive/10"
+              )}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold">Net Result (Årets resultat)</h3>
+                    <p className="text-sm text-muted-foreground">Revenue minus Expenses</p>
+                  </div>
+                  <div className={cn(
+                    "text-3xl font-bold font-mono",
+                    incomeStatement.netResult >= 0 ? "text-success" : "text-destructive"
+                  )}>
+                    {formatAmount(incomeStatement.netResult)} SEK
+                  </div>
+                </div>
+              </div>
+
               {/* Revenue Section */}
               <div>
                 <h3 className="font-semibold text-foreground mb-3 flex items-center gap-2">
@@ -304,25 +298,6 @@ export default function AnnualReportsPage() {
                   </div>
                 )}
               </div>
-
-              {/* Net Result */}
-              <div className={cn(
-                "rounded-lg p-6",
-                incomeStatement.netResult >= 0 ? "bg-success/10" : "bg-destructive/10"
-              )}>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-semibold">Net Result (Årets resultat)</h3>
-                    <p className="text-sm text-muted-foreground">Revenue minus Expenses</p>
-                  </div>
-                  <div className={cn(
-                    "text-3xl font-bold font-mono",
-                    incomeStatement.netResult >= 0 ? "text-success" : "text-destructive"
-                  )}>
-                    {formatAmount(incomeStatement.netResult)} SEK
-                  </div>
-                </div>
-              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -343,6 +318,29 @@ export default function AnnualReportsPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* Balance Check - Shown first for quick overview */}
+              <div className={cn(
+                "rounded-lg p-6",
+                balanceSheet.isBalanced ? "bg-success/10" : "bg-destructive/10"
+              )}>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h3 className="text-lg font-semibold">Balance Check</h3>
+                    <p className="text-sm text-muted-foreground">
+                      {balanceSheet.isBalanced 
+                        ? "The balance sheet is balanced (Assets = Equity + Liabilities)" 
+                        : "WARNING: The balance sheet is NOT balanced!"}
+                    </p>
+                  </div>
+                  <div className={cn(
+                    "text-xl font-bold",
+                    balanceSheet.isBalanced ? "text-success" : "text-destructive"
+                  )}>
+                    {balanceSheet.isBalanced ? "✓ Balanced" : "⚠ Imbalanced"}
+                  </div>
+                </div>
+              </div>
+
               <div className="grid md:grid-cols-2 gap-6">
                 {/* Assets */}
                 <div>
@@ -426,29 +424,6 @@ export default function AnnualReportsPage() {
                       </table>
                     </div>
                   )}
-                </div>
-              </div>
-
-              {/* Balance Check */}
-              <div className={cn(
-                "rounded-lg p-6",
-                balanceSheet.isBalanced ? "bg-success/10" : "bg-destructive/10"
-              )}>
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-semibold">Balance Check</h3>
-                    <p className="text-sm text-muted-foreground">
-                      {balanceSheet.isBalanced 
-                        ? "The balance sheet is balanced (Assets = Equity + Liabilities)" 
-                        : "WARNING: The balance sheet is NOT balanced!"}
-                    </p>
-                  </div>
-                  <div className={cn(
-                    "text-xl font-bold",
-                    balanceSheet.isBalanced ? "text-success" : "text-destructive"
-                  )}>
-                    {balanceSheet.isBalanced ? "✓ Balanced" : "⚠ Imbalanced"}
-                  </div>
                 </div>
               </div>
             </CardContent>
