@@ -83,7 +83,7 @@ export default function AnnualReportsPage() {
               <BarChart3 className="h-6 w-6 text-secondary" />
             </div>
             <div>
-              <h1 className="text-3xl font-bold text-foreground">Annual Reports</h1>
+              <h1 className="text-3xl font-bold text-foreground">Financial Statements</h1>
               <p className="text-muted-foreground">Financial statements and year-end procedures</p>
             </div>
           </div>
@@ -118,7 +118,7 @@ export default function AnnualReportsPage() {
             <BarChart3 className="h-6 w-6 text-secondary" />
           </div>
           <div>
-            <h1 className="text-3xl font-bold text-foreground">Annual Reports</h1>
+            <h1 className="text-3xl font-bold text-foreground">Financial Statements</h1>
             <p className="text-muted-foreground">Financial statements for your business</p>
           </div>
         </div>

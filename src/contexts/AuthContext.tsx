@@ -1,10 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { authService, User } from "@/services/auth";
 
-export interface User {
-  id: string;
-  email: string;
-  name: string;
-}
+export type { User } from "@/services/auth";
 
 export interface CompanyProfile {
   id: string;
@@ -105,14 +102,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem("accountpro_companies", JSON.stringify(newCompanies));
   };
 
-  const login = async (email: string, _password: string) => {
-    // Simulated login - in production, this would validate with backend
-    const newUser: User = {
-      id: crypto.randomUUID(),
-      email,
-      name: email.split("@")[0],
-    };
+  const login = async (email: string, password: string) => {
+    // Use the auth service for authentication
+    const result = await authService.login(email, password);
     
+    if (!result.success || !result.user) {
+      throw new Error(result.error || "Login failed");
+    }
+    
+    const newUser = result.user;
     setUser(newUser);
     localStorage.setItem("accountpro_user", JSON.stringify(newUser));
     
@@ -140,13 +138,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signup = async (email: string, _password: string, name: string) => {
-    const newUser: User = {
-      id: crypto.randomUUID(),
-      email,
-      name,
-    };
+  const signup = async (email: string, password: string, name: string) => {
+    // Use the auth service for signup
+    const result = await authService.signup(email, password, name);
     
+    if (!result.success || !result.user) {
+      throw new Error(result.error || "Signup failed");
+    }
+    
+    const newUser = result.user;
     setUser(newUser);
     localStorage.setItem("accountpro_user", JSON.stringify(newUser));
     
