@@ -43,10 +43,16 @@ const sidebarItems = [
     description: "Tax declarations",
   },
   {
+    name: "Financial Statements",
+    href: "/economy/financial-statements",
+    icon: BarChart3,
+    description: "Reports & analysis",
+  },
+  {
     name: "Annual Reports",
     href: "/economy/annual-reports",
-    icon: BarChart3,
-    description: "Yearly statements",
+    icon: FileText,
+    description: "Årsredovisning",
   },
   {
     name: "Accounts",

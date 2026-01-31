@@ -19,7 +19,8 @@ import AccountingPage from "./pages/economy/AccountingPage";
 import BillingPage from "./pages/economy/BillingPage";
 import SalaryPage from "./pages/economy/SalaryPage";
 import DeclarationPage from "./pages/economy/DeclarationPage";
-import AnnualReportsPage from "./pages/economy/AnnualReportsPage";
+import FinancialStatementsPage from "./pages/economy/FinancialStatementsPage";
+import NewAnnualReportsPage from "./pages/economy/NewAnnualReportsPage";
 import AccountsPage from "./pages/economy/AccountsPage";
 import NotFound from "./pages/NotFound";
 
@@ -50,7 +51,8 @@ const App = () => (
                 <Route path="billing" element={<BillingPage />} />
                 <Route path="salary" element={<SalaryPage />} />
                 <Route path="declaration" element={<DeclarationPage />} />
-                <Route path="annual-reports" element={<AnnualReportsPage />} />
+                <Route path="financial-statements" element={<FinancialStatementsPage />} />
+                <Route path="annual-reports" element={<NewAnnualReportsPage />} />
                 <Route path="accounts" element={<AccountsPage />} />
               </Route>
 
