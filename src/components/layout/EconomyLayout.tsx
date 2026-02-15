@@ -11,8 +11,8 @@ export function EconomyLayout() {
   const navigate = useNavigate();
 
   useEffect(() => {
+    // Redirect logged-in users without valid company from ALL economy routes
     if (!isLoading && user && !hasValidCompany) {
-      // Navigate with state to trigger popup on company page
       navigate("/company", { replace: true, state: { showCompanyRequiredAlert: true } });
     }
   }, [user, hasValidCompany, isLoading, navigate]);

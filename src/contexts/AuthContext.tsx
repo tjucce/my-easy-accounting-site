@@ -47,6 +47,35 @@ const DEFAULT_COMPANY_PROFILE: Omit<CompanyProfile, "id"> = {
   fiscalYearEnd: "12-31",
 };
 
+// Predefined company for test user (test@test.com)
+const TEST_USER_COMPANY: Omit<CompanyProfile, "id"> = {
+  companyName: "Test AB",
+  organizationNumber: "012345-6789",
+  address: "Test 1",
+  postalCode: "12345",
+  city: "Test",
+  country: "Sweden",
+  vatNumber: "",
+  fiscalYearStart: "01-01",
+  fiscalYearEnd: "12-31",
+};
+
+const TEST_USER_EMAIL = "test@test.com";
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
+
+const mapCompanyFromApi = (company: any): CompanyProfile => ({
+  id: String(company.id),
+  companyName: company.companyName ?? "",
+  organizationNumber: company.organizationNumber ?? "",
+  address: company.address ?? "",
+  postalCode: company.postalCode ?? "",
+  city: company.city ?? "",
+  country: company.country ?? "Sweden",
+  vatNumber: company.vatNumber ?? "",
+  fiscalYearStart: company.fiscalYearStart ?? "01-01",
+  fiscalYearEnd: company.fiscalYearEnd ?? "12-31",
+});
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [companies, setCompanies] = useState<CompanyProfile[]>([]);
@@ -77,7 +106,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const storedFirstTime = localStorage.getItem("accountpro_first_time");
     
     if (storedUser) {
-      setUser(JSON.parse(storedUser));
+      const parsedUser = JSON.parse(storedUser);
+      setUser(parsedUser);
       
       if (storedCompanies) {
         const parsed = JSON.parse(storedCompanies);
@@ -92,6 +122,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       
       if (storedFirstTime === "true") {
         setIsFirstTimeUser(true);
+      }
+
+      if (authService.isDatabaseConnected()) {
+        fetch(`${API_BASE_URL}/companies?user_id=${parsedUser.id}`)
+          .then((response) => response.json())
+          .then((payload) => {
+            const apiCompanies = Array.isArray(payload) ? payload.map(mapCompanyFromApi) : [];
+            if (apiCompanies.length > 0) {
+              setCompanies(apiCompanies);
+              localStorage.setItem("accountpro_companies", JSON.stringify(apiCompanies));
+              const storedActiveId = localStorage.getItem("accountpro_active_company");
+              if (storedActiveId && apiCompanies.some((c) => c.id === storedActiveId)) {
+                setActiveCompanyId(storedActiveId);
+              } else {
+                setActiveCompanyId(apiCompanies[0].id);
+                localStorage.setItem("accountpro_active_company", apiCompanies[0].id);
+              }
+            }
+          })
+          .catch(() => undefined);
       }
     }
     setIsLoading(false);
@@ -114,6 +164,54 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(newUser);
     localStorage.setItem("accountpro_user", JSON.stringify(newUser));
     
+    // Check if this is the test user
+    const isTestUser = email.toLowerCase() === TEST_USER_EMAIL;
+    const isAdminUser = email.toLowerCase() === "admin@snug.local";
+    
+    if (authService.isDatabaseConnected()) {
+      const response = await fetch(`${API_BASE_URL}/companies?user_id=${newUser.id}`);
+      const payload = await response.json().catch(() => []);
+      const apiCompanies = Array.isArray(payload) ? payload.map(mapCompanyFromApi) : [];
+      if (apiCompanies.length > 0) {
+        setCompanies(apiCompanies);
+        const storedActiveId = localStorage.getItem("accountpro_active_company");
+        if (storedActiveId && apiCompanies.some((c) => c.id === storedActiveId)) {
+          setActiveCompanyId(storedActiveId);
+        } else {
+          setActiveCompanyId(apiCompanies[0].id);
+        }
+      } else {
+        const defaultCompany: CompanyProfile = {
+          ...(isTestUser ? TEST_USER_COMPANY : DEFAULT_COMPANY_PROFILE),
+          id: crypto.randomUUID(),
+        };
+        const createResponse = await fetch(`${API_BASE_URL}/companies`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_id: newUser.id,
+            company_name: defaultCompany.companyName,
+            organization_number: defaultCompany.organizationNumber,
+            address: defaultCompany.address,
+            postal_code: defaultCompany.postalCode,
+            city: defaultCompany.city,
+            country: defaultCompany.country,
+            vat_number: defaultCompany.vatNumber,
+            fiscal_year_start: defaultCompany.fiscalYearStart,
+            fiscal_year_end: defaultCompany.fiscalYearEnd,
+          }),
+        });
+        const created = await createResponse.json().catch(() => ({}));
+        const createdCompany = {
+          ...defaultCompany,
+          id: String(created.id ?? defaultCompany.id),
+        };
+        setCompanies([createdCompany]);
+        setActiveCompanyId(createdCompany.id);
+      }
+      return;
+    }
+
     // Load or create companies
     const storedCompanies = localStorage.getItem("accountpro_companies");
     if (storedCompanies) {
@@ -126,11 +224,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setActiveCompanyId(parsed[0].id);
       }
     } else {
-      // Create a default company
+      // Create a default company - use predefined data for test user
       const defaultCompany: CompanyProfile = {
-        ...DEFAULT_COMPANY_PROFILE,
+        ...(isTestUser ? TEST_USER_COMPANY : DEFAULT_COMPANY_PROFILE),
         id: crypto.randomUUID(),
       };
+      if (isAdminUser) {
+        localStorage.setItem("accountpro_active_company", defaultCompany.id);
+      }
       setCompanies([defaultCompany]);
       setActiveCompanyId(defaultCompany.id);
       localStorage.setItem("accountpro_companies", JSON.stringify([defaultCompany]));
@@ -155,6 +256,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ...DEFAULT_COMPANY_PROFILE,
       id: crypto.randomUUID(),
     };
+    if (authService.isDatabaseConnected()) {
+      const createResponse = await fetch(`${API_BASE_URL}/companies`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: newUser.id,
+          company_name: defaultCompany.companyName,
+          organization_number: defaultCompany.organizationNumber,
+          address: defaultCompany.address,
+          postal_code: defaultCompany.postalCode,
+          city: defaultCompany.city,
+          country: defaultCompany.country,
+          vat_number: defaultCompany.vatNumber,
+          fiscal_year_start: defaultCompany.fiscalYearStart,
+          fiscal_year_end: defaultCompany.fiscalYearEnd,
+        }),
+      });
+      const created = await createResponse.json().catch(() => ({}));
+      const createdCompany = {
+        ...defaultCompany,
+        id: String(created.id ?? defaultCompany.id),
+      };
+      setCompanies([createdCompany]);
+      setActiveCompanyId(createdCompany.id);
+      setIsFirstTimeUser(true);
+      return;
+    }
+
     setCompanies([defaultCompany]);
     setActiveCompanyId(defaultCompany.id);
     setIsFirstTimeUser(true);
@@ -182,24 +311,110 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ...companyData,
       id: crypto.randomUUID(),
     };
+    if (authService.isDatabaseConnected() && user) {
+      const previousActiveCompanyId = activeCompanyId;
+      setCompanies((prevCompanies) => [...prevCompanies, newCompany]);
+      setActiveCompanyId(newCompany.id);
+
+      fetch(`${API_BASE_URL}/companies`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: user.id,
+          company_name: newCompany.companyName,
+          organization_number: newCompany.organizationNumber,
+          address: newCompany.address,
+          postal_code: newCompany.postalCode,
+          city: newCompany.city,
+          country: newCompany.country,
+          vat_number: newCompany.vatNumber,
+          fiscal_year_start: newCompany.fiscalYearStart,
+          fiscal_year_end: newCompany.fiscalYearEnd,
+        }),
+      })
+        .then(async (response) => {
+          if (!response.ok) {
+            throw new Error("Failed to create company");
+          }
+          const created = await response.json().catch(() => ({}));
+          const createdCompany = { ...newCompany, id: String(created.id ?? newCompany.id) };
+
+          setCompanies((prevCompanies) => {
+            const index = prevCompanies.findIndex((company) => company.id === newCompany.id);
+            if (index === -1) {
+              return [...prevCompanies, createdCompany];
+            }
+            const nextCompanies = [...prevCompanies];
+            nextCompanies[index] = createdCompany;
+            return nextCompanies;
+          });
+          setActiveCompanyId(createdCompany.id);
+        })
+        .catch(() => {
+          setCompanies((prevCompanies) => {
+            const filteredCompanies = prevCompanies.filter((company) => company.id !== newCompany.id);
+            const canRestorePrevious =
+              previousActiveCompanyId !== null &&
+              filteredCompanies.some((company) => company.id === previousActiveCompanyId);
+
+            if (canRestorePrevious) {
+              setActiveCompanyId(previousActiveCompanyId);
+            } else {
+              setActiveCompanyId(filteredCompanies.length > 0 ? filteredCompanies[0].id : null);
+            }
+            return filteredCompanies;
+          });
+        });
+      return newCompany;
+    }
+
     const newCompanies = [...companies, newCompany];
     saveCompanies(newCompanies);
-    // Also immediately set as active since saveCompanies is async
     setActiveCompanyId(newCompany.id);
     localStorage.setItem("accountpro_active_company", newCompany.id);
     return newCompany;
   };
 
   const updateCompany = (company: CompanyProfile) => {
+    if (authService.isDatabaseConnected()) {
+      fetch(`${API_BASE_URL}/companies/${company.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          company_name: company.companyName,
+          organization_number: company.organizationNumber,
+          address: company.address,
+          postal_code: company.postalCode,
+          city: company.city,
+          country: company.country,
+          vat_number: company.vatNumber,
+          fiscal_year_start: company.fiscalYearStart,
+          fiscal_year_end: company.fiscalYearEnd,
+        }),
+      });
+      const newCompanies = companies.map(c => c.id === company.id ? company : c);
+      setCompanies(newCompanies);
+      return;
+    }
     const newCompanies = companies.map(c => c.id === company.id ? company : c);
     saveCompanies(newCompanies);
   };
 
   const deleteCompany = (companyId: string) => {
     const newCompanies = companies.filter(c => c.id !== companyId);
-    
+
+    if (authService.isDatabaseConnected()) {
+      fetch(`${API_BASE_URL}/companies/${companyId}`, { method: "DELETE" });
+      setCompanies(newCompanies);
+      if (newCompanies.length === 0) {
+        setActiveCompanyId(null);
+      } else if (activeCompanyId === companyId) {
+        setActiveCompanyId(newCompanies[0].id);
+      }
+      return;
+    }
+
     if (newCompanies.length === 0) {
-      // Create a fresh empty company when deleting the last one
       const freshCompany: CompanyProfile = {
         ...DEFAULT_COMPANY_PROFILE,
         id: crypto.randomUUID(),
@@ -211,7 +426,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.setItem("accountpro_first_time", "true");
     } else {
       saveCompanies(newCompanies);
-      // If deleted active company, switch to first remaining
       if (activeCompanyId === companyId) {
         setActiveCompanyId(newCompanies[0].id);
         localStorage.setItem("accountpro_active_company", newCompanies[0].id);
