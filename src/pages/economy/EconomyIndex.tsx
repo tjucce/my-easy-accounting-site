@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -12,6 +12,7 @@ import {
   ArrowRight,
   TrendingUp,
   TrendingDown,
+  LogIn,
 } from "lucide-react";
 import {
   ChartContainer,
@@ -20,6 +21,7 @@ import {
 } from "@/components/ui/chart";
 import { Area, AreaChart, XAxis, YAxis, ReferenceLine, ResponsiveContainer } from "recharts";
 import { useAccounting } from "@/contexts/AccountingContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { format, subMonths, startOfMonth, endOfMonth } from "date-fns";
 
 const economyModules = [
@@ -82,6 +84,12 @@ const chartConfig = {
 
 export default function EconomyIndex() {
   const { getIncomeStatement } = useAccounting();
+  const { user } = useAuth();
+
+  // Scroll to top on mount
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'instant' });
+  }, []);
 
   const monthlyData = useMemo(() => {
     const data = [];
@@ -106,6 +114,83 @@ export default function EconomyIndex() {
 
   const currentMonthResult = monthlyData[monthlyData.length - 1]?.netResult || 0;
   const hasData = monthlyData.some(d => d.netResult !== 0);
+  
+  // Calculate 12-month rolling total
+  const twelveMonthTotal = useMemo(() => {
+    return monthlyData.reduce((sum, month) => sum + month.netResult, 0);
+  }, [monthlyData]);
+
+  // Not logged in - show informational overview
+  if (!user) {
+    return (
+      <div className="space-y-8 animate-fade-in">
+        <div className="space-y-2">
+          <h1 className="text-3xl font-bold text-foreground">Economy Overview</h1>
+          <p className="text-lg text-muted-foreground">
+            A complete suite of tools for Swedish business accounting. Explore what each module offers below.
+          </p>
+        </div>
+
+        {/* Call to action for login */}
+        <Card className="bg-secondary/5 border-secondary/20">
+          <CardContent className="py-6">
+            <div className="flex items-center justify-between flex-wrap gap-4">
+              <div className="space-y-1">
+                <h3 className="text-lg font-semibold text-foreground">Ready to get started?</h3>
+                <p className="text-muted-foreground">Log in to access all features and manage your company's finances.</p>
+              </div>
+              <Button asChild>
+                <Link to="/login">
+                  <LogIn className="mr-2 h-4 w-4" />
+                  Log In
+                </Link>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Module overview cards */}
+        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {economyModules.map((module, index) => {
+            const Icon = module.icon;
+            return (
+              <div
+                key={module.name}
+                className="feature-card animate-fade-in-up"
+                style={{ animationDelay: `${index * 0.05}s` }}
+              >
+                <div className="flex items-start justify-between mb-4">
+                  <div className="w-12 h-12 rounded-lg bg-secondary/10 flex items-center justify-center">
+                    <Icon className="h-6 w-6 text-secondary" />
+                  </div>
+                </div>
+                
+                <h3 className="text-xl font-semibold text-foreground mb-2">
+                  {module.name}
+                </h3>
+                
+                <p className="text-muted-foreground text-sm mb-4">
+                  {module.description}
+                </p>
+                
+                <ul className="space-y-2">
+                  {module.features.map((feature) => (
+                    <li
+                      key={feature}
+                      className="text-sm text-muted-foreground flex items-center gap-2"
+                    >
+                      <div className="w-1.5 h-1.5 rounded-full bg-secondary" />
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 animate-fade-in">
@@ -132,9 +217,9 @@ export default function EconomyIndex() {
               </span>
             </div>
           </div>
-          <p className="text-sm text-muted-foreground">Last 12 months income minus expenses</p>
+          <p className="text-sm text-muted-foreground">This month's income minus expenses</p>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
           {hasData ? (
             <ChartContainer config={chartConfig} className="h-[200px] w-full">
               <AreaChart data={monthlyData} margin={{ top: 20, right: 20, left: 20, bottom: 0 }}>
@@ -189,6 +274,24 @@ export default function EconomyIndex() {
               <p>No voucher data yet. Create vouchers to see your monthly results.</p>
             </div>
           )}
+          
+          {/* 12-Month Total */}
+          <div className="flex items-center justify-between pt-2 border-t border-border">
+            <div>
+              <p className="text-sm font-medium text-foreground">12-Month Net Result</p>
+              <p className="text-xs text-muted-foreground">Rolling total for the last 12 months</p>
+            </div>
+            <div className="flex items-center gap-2">
+              {twelveMonthTotal >= 0 ? (
+                <TrendingUp className="h-5 w-5 text-green-500" />
+              ) : (
+                <TrendingDown className="h-5 w-5 text-destructive" />
+              )}
+              <span className={`text-lg font-bold ${twelveMonthTotal >= 0 ? "text-green-500" : "text-destructive"}`}>
+                {twelveMonthTotal >= 0 ? "+" : ""}{twelveMonthTotal.toLocaleString("sv-SE", { minimumFractionDigits: 2 })} SEK
+              </span>
+            </div>
+          </div>
         </CardContent>
       </Card>
 

@@ -1,17 +1,22 @@
-import { useState } from "react";
-import { BookOpen, FileSpreadsheet, ListChecks, Calculator, Lock, Plus, Eye, Calendar } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { BookOpen, FileSpreadsheet, ListChecks, Calculator, Lock, Plus, Eye, Calendar, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAccounting, Voucher } from "@/contexts/AccountingContext";
 import { VoucherForm } from "@/components/accounting/VoucherForm";
 import { VoucherDetails } from "@/components/accounting/VoucherDetails";
+import { VoucherPagination } from "@/components/accounting/VoucherPagination";
 import { formatAmount } from "@/lib/bas-accounts";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
+import { YearSelector } from "@/components/ui/year-selector";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+
+const VOUCHERS_PER_PAGE = 10;
 
 const accountingFeatures = [
   {
@@ -47,16 +52,45 @@ export default function AccountingPage() {
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedVoucher, setSelectedVoucher] = useState<Voucher | null>(null);
   const [editingVoucher, setEditingVoucher] = useState<Voucher | null>(null);
+  const pageTopRef = useRef<HTMLDivElement>(null);
   
-  // Voucher period filter
-  const [voucherStartDate, setVoucherStartDate] = useState<Date | undefined>(new Date(new Date().getFullYear(), 0, 1));
-  const [voucherEndDate, setVoucherEndDate] = useState<Date | undefined>(new Date(new Date().getFullYear(), 11, 31));
+  // Year selector
+  const currentYear = new Date().getFullYear();
+  const [selectedYear, setSelectedYear] = useState(currentYear);
+  
+  // Voucher period filter - derived from selected year
+  const [voucherStartDate, setVoucherStartDate] = useState<Date | undefined>(new Date(selectedYear, 0, 1));
+  const [voucherEndDate, setVoucherEndDate] = useState<Date | undefined>(new Date(selectedYear, 11, 31));
+  
+  // Search and pagination
+  const [searchQuery, setSearchQuery] = useState("");
+  const [currentPage, setCurrentPage] = useState(1);
+  
+  // Update dates when year changes
+  useEffect(() => {
+    setVoucherStartDate(new Date(selectedYear, 0, 1));
+    setVoucherEndDate(new Date(selectedYear, 11, 31));
+  }, [selectedYear]);
 
-  // Filter vouchers by date
+  // Reset to page 1 when search or filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, voucherStartDate, voucherEndDate]);
+
+  // Filter vouchers by date and search
   const filteredVouchers = vouchers.filter((voucher) => {
     const voucherDate = new Date(voucher.date);
     if (voucherStartDate && voucherDate < voucherStartDate) return false;
     if (voucherEndDate && voucherDate > voucherEndDate) return false;
+    
+    // Search filter - by description or voucher number
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      const matchesDescription = voucher.description.toLowerCase().includes(query);
+      const matchesNumber = voucher.voucherNumber.toString().includes(query);
+      if (!matchesDescription && !matchesNumber) return false;
+    }
+    
     return true;
   });
 
@@ -80,6 +114,10 @@ export default function AccountingPage() {
   const handleFormSuccess = () => {
     setShowCreateForm(false);
     setEditingVoucher(null);
+    // Force scroll to top of page after successful save
+    setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: 'instant' });
+    }, 0);
   };
 
   const handleDetailsClose = () => {
@@ -94,7 +132,7 @@ export default function AccountingPage() {
   };
 
   return (
-    <div className="space-y-12 animate-fade-in">
+    <div ref={pageTopRef} className="space-y-12 animate-fade-in">
       {/* Header */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -183,12 +221,11 @@ export default function AccountingPage() {
                     />
                   </PopoverContent>
                 </Popover>
-                <Button variant="outline" size="sm" onClick={() => {
-                  setVoucherStartDate(new Date(new Date().getFullYear(), 0, 1));
-                  setVoucherEndDate(new Date(new Date().getFullYear(), 11, 31));
-                }}>
-                  Current Year
-                </Button>
+                <YearSelector 
+                  value={selectedYear} 
+                  onChange={setSelectedYear}
+                  className="w-[140px]"
+                />
                 <Button variant="ghost" size="sm" onClick={() => {
                   setVoucherStartDate(undefined);
                   setVoucherEndDate(undefined);
@@ -199,54 +236,97 @@ export default function AccountingPage() {
             </CardContent>
           </Card>
 
-          <h2 className="text-2xl font-semibold text-foreground mb-4">
-            Vouchers ({filteredVouchers.length})
-          </h2>
-          <div className="bg-card rounded-xl border border-border overflow-hidden">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-border bg-muted/30">
-                  <th className="text-left py-3 px-4 font-semibold text-foreground">#</th>
-                  <th className="text-left py-3 px-4 font-semibold text-foreground">Date</th>
-                  <th className="text-left py-3 px-4 font-semibold text-foreground">Description</th>
-                  <th className="text-right py-3 px-4 font-semibold text-foreground">Amount</th>
-                  <th className="text-center py-3 px-4 font-semibold text-foreground">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredVouchers.slice(-10).reverse().map((voucher) => {
-                  const total = voucher.lines.reduce((sum, l) => sum + l.debit, 0);
-                  return (
-                    <tr 
-                      key={voucher.id} 
-                      className="border-b border-border/50 hover:bg-muted/20 cursor-pointer transition-colors"
-                      onClick={() => handleVoucherClick(voucher)}
-                    >
-                      <td className="py-3 px-4 font-mono text-secondary">
-                        {voucher.voucherNumber}
-                      </td>
-                      <td className="py-3 px-4">{voucher.date}</td>
-                      <td className="py-3 px-4 text-muted-foreground">{voucher.description}</td>
-                      <td className="py-3 px-4 text-right font-mono">{formatAmount(total)} SEK</td>
-                      <td className="py-3 px-4 text-center">
-                        <Button 
-                          variant="ghost" 
-                          size="sm"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleVoucherClick(voucher);
-                          }}
-                        >
-                          <Eye className="h-4 w-4 mr-1" />
-                          View
-                        </Button>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          {/* Search and Title */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-4">
+            <h2 className="text-2xl font-semibold text-foreground">
+              Vouchers ({filteredVouchers.length})
+            </h2>
+            <div className="relative w-full sm:w-64">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Search by name or number..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9"
+              />
+            </div>
           </div>
+
+          {/* Calculate pagination */}
+          {(() => {
+            const totalPages = Math.ceil(filteredVouchers.length / VOUCHERS_PER_PAGE);
+            const startIndex = (currentPage - 1) * VOUCHERS_PER_PAGE;
+            const paginatedVouchers = filteredVouchers
+              .slice()
+              .reverse()
+              .slice(startIndex, startIndex + VOUCHERS_PER_PAGE);
+
+            return (
+              <>
+                <div className="bg-card rounded-xl border border-border overflow-hidden">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/30">
+                        <th className="text-left py-3 px-4 font-semibold text-foreground">#</th>
+                        <th className="text-left py-3 px-4 font-semibold text-foreground">Date</th>
+                        <th className="text-left py-3 px-4 font-semibold text-foreground">Description</th>
+                        <th className="text-right py-3 px-4 font-semibold text-foreground">Amount</th>
+                        <th className="text-center py-3 px-4 font-semibold text-foreground">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {paginatedVouchers.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="py-8 text-center text-muted-foreground">
+                            No vouchers found matching your search.
+                          </td>
+                        </tr>
+                      ) : (
+                        paginatedVouchers.map((voucher) => {
+                          const total = voucher.lines.reduce((sum, l) => sum + l.debit, 0);
+                          return (
+                            <tr 
+                              key={voucher.id} 
+                              className="border-b border-border/50 hover:bg-muted/20 cursor-pointer transition-colors"
+                              onClick={() => handleVoucherClick(voucher)}
+                            >
+                              <td className="py-3 px-4 font-mono text-secondary">
+                                {voucher.voucherNumber}
+                              </td>
+                              <td className="py-3 px-4">{voucher.date}</td>
+                              <td className="py-3 px-4 text-muted-foreground">{voucher.description}</td>
+                              <td className="py-3 px-4 text-right font-mono">{formatAmount(total)} SEK</td>
+                              <td className="py-3 px-4 text-center">
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleVoucherClick(voucher);
+                                  }}
+                                >
+                                  <Eye className="h-4 w-4 mr-1" />
+                                  View
+                                </Button>
+                              </td>
+                            </tr>
+                          );
+                        })
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Pagination */}
+                <VoucherPagination
+                  currentPage={currentPage}
+                  totalPages={totalPages}
+                  onPageChange={setCurrentPage}
+                />
+              </>
+            );
+          })()}
         </section>
       )}
 

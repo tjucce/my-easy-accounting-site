@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,10 +22,14 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useAuth, CompanyProfile } from "@/contexts/AuthContext";
 import { useAccounting } from "@/contexts/AccountingContexts";
+import { authService } from "@/services/auth";
 import { toast } from "sonner";
 import { Building, Save, ArrowLeft, Plus, Trash2, Check, Upload, Download } from "lucide-react";
+
 import { Header } from "@/components/layout/Header";
 import { Footer } from "@/components/layout/Footer";
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000";
 
 export default function CompanyPage() {
   const { user, companies, activeCompany, addCompany, updateCompany, deleteCompany, setActiveCompany, isFirstTimeUser, markCompanySetupComplete } = useAuth();
@@ -36,11 +40,37 @@ export default function CompanyPage() {
   const [originalCompanyId, setOriginalCompanyId] = useState<string | null>(null);
   const [showCompanyRequiredAlert, setShowCompanyRequiredAlert] = useState(false);
   
+  // Ref to track unsaved state for cleanup on unmount
+  const unsavedRef = useRef<{ isNew: boolean; companyId: string; originalId: string | null }>({
+    isNew: false, companyId: "", originalId: null,
+  });
+
+  // Keep ref in sync
+  useEffect(() => {
+    unsavedRef.current = {
+      isNew: isNewCompany,
+      companyId: activeCompany?.id || "",
+      originalId: originalCompanyId,
+    };
+  }, [isNewCompany, activeCompany?.id, originalCompanyId]);
+
+  // Cleanup unsaved company when navigating away
+  useEffect(() => {
+    return () => {
+      const { isNew, companyId, originalId } = unsavedRef.current;
+      if (isNew && companyId) {
+        deleteCompany(companyId);
+        if (originalId) {
+          setActiveCompany(originalId);
+        }
+      }
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  
   // Check if we were redirected because company is required
   useEffect(() => {
     if (location.state?.showCompanyRequiredAlert) {
       setShowCompanyRequiredAlert(true);
-      // Clear the state so it doesn't show again on refresh
       window.history.replaceState({}, document.title);
     }
   }, [location.state]);
@@ -146,7 +176,9 @@ export default function CompanyPage() {
   };
 
   const handleAddCompany = () => {
-    // Don't store original - we switch to new company immediately
+    if (isNewCompany) return; // Prevent adding another while one is unsaved
+    // Store original company so we can restore on cancel/navigate away
+    const previousId = activeCompany?.id || null;
     const newCompany = addCompany({
       companyName: "",
       organizationNumber: "",
@@ -160,9 +192,10 @@ export default function CompanyPage() {
     });
     setActiveCompany(newCompany.id);
     setIsNewCompany(true);
-    setOriginalCompanyId(null);
+    setOriginalCompanyId(previousId);
     toast.info("Fill in company details and save");
   };
+
 
   const handleSIEUpload = () => {
     const input = document.createElement("input");
@@ -176,6 +209,18 @@ export default function CompanyPage() {
           const result = importSIE(content);
           
           if (result.success) {
+            if (authService.isDatabaseConnected() && user) {
+              fetch(`${API_BASE_URL}/sie-files`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  user_id: Number(user.id),
+                  filename: file.name,
+                  storage_path: `browser-upload:${file.name}`,
+                  period: new Date().getFullYear().toString(),
+                }),
+              }).catch(() => undefined);
+            }
             if (result.imported > 0) {
               toast.success(`Imported ${result.imported} voucher(s) from SIE file`);
             }
@@ -289,7 +334,7 @@ export default function CompanyPage() {
                       </CardDescription>
                     </div>
                   </div>
-                  <Button onClick={handleAddCompany} variant="outline" size="sm">
+                  <Button onClick={handleAddCompany} variant="outline" size="sm" disabled={isNewCompany}>
                     <Plus className="h-4 w-4 mr-2" />
                     Add Company
                   </Button>
