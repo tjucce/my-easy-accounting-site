@@ -60,8 +60,12 @@ export function BillingProvider({ children }: { children: ReactNode }) {
   const [nextInvoiceNumber, setNextInvoiceNumber] = useState(1);
 
   const companyId = activeCompany?.id || "";
+  const parsedCompanyId = Number(companyId);
+  const hasNumericCompanyId = Number.isFinite(parsedCompanyId);
 
   useEffect(() => {
+    let isCurrentEffect = true;
+
     if (!companyId) {
       setCustomers([]);
       setProducts([]);
@@ -70,32 +74,54 @@ export function BillingProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    if (authService.isDatabaseConnected() && user) {
-      fetch(`${API_BASE_URL}/customers?user_id=${user.id}&company_id=${companyId}`)
+    const storedInvoices = localStorage.getItem(`billing_invoices_${companyId}`);
+    const storedNextNumber = localStorage.getItem(`billing_next_invoice_${companyId}`);
+
+    if (storedInvoices) setInvoices(JSON.parse(storedInvoices));
+    else setInvoices([]);
+
+    if (storedNextNumber) setNextInvoiceNumber(parseInt(storedNextNumber));
+    else setNextInvoiceNumber(1);
+
+    if (authService.isDatabaseConnected() && user && hasNumericCompanyId) {
+      fetch(`${API_BASE_URL}/customers?user_id=${user.id}&company_id=${parsedCompanyId}`)
         .then((response) => response.json())
         .then((payload) => {
+          if (!isCurrentEffect) {
+            return;
+          }
           const apiCustomers = Array.isArray(payload) ? payload.map(mapCustomerFromApi) : [];
           setCustomers(apiCustomers);
         })
-        .catch(() => setCustomers([]));
+        .catch(() => {
+          if (isCurrentEffect) {
+            setCustomers([]);
+          }
+        });
 
-      fetch(`${API_BASE_URL}/products?user_id=${user.id}&company_id=${companyId}`)
+      fetch(`${API_BASE_URL}/products?user_id=${user.id}&company_id=${parsedCompanyId}`)
         .then((response) => response.json())
         .then((payload) => {
+          if (!isCurrentEffect) {
+            return;
+          }
           const apiProducts = Array.isArray(payload) ? payload.map(mapProductFromApi) : [];
           setProducts(apiProducts);
         })
-        .catch(() => setProducts([]));
+        .catch(() => {
+          if (isCurrentEffect) {
+            setProducts([]);
+          }
+        });
 
-      setInvoices([]);
-      setNextInvoiceNumber(1);
-      return;
+      return () => {
+        isCurrentEffect = false;
+      };
+
     }
 
     const storedCustomers = localStorage.getItem(`billing_customers_${companyId}`);
     const storedProducts = localStorage.getItem(`billing_products_${companyId}`);
-    const storedInvoices = localStorage.getItem(`billing_invoices_${companyId}`);
-    const storedNextNumber = localStorage.getItem(`billing_next_invoice_${companyId}`);
 
     if (storedCustomers) setCustomers(JSON.parse(storedCustomers));
     else setCustomers([]);
@@ -103,11 +129,9 @@ export function BillingProvider({ children }: { children: ReactNode }) {
     if (storedProducts) setProducts(JSON.parse(storedProducts));
     else setProducts([]);
 
-    if (storedInvoices) setInvoices(JSON.parse(storedInvoices));
-    else setInvoices([]);
-
-    if (storedNextNumber) setNextInvoiceNumber(parseInt(storedNextNumber));
-    else setNextInvoiceNumber(1);
+    return () => {
+      isCurrentEffect = false;
+    };
   }, [companyId, user]);
 
   const saveCustomers = (newCustomers: Customer[]) => {
@@ -141,13 +165,13 @@ export function BillingProvider({ children }: { children: ReactNode }) {
       createdAt: new Date().toISOString(),
     };
 
-    if (authService.isDatabaseConnected() && user) {
+    if (authService.isDatabaseConnected() && user && hasNumericCompanyId) {
       fetch(`${API_BASE_URL}/customers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_id: user.id,
-          company_id: Number(companyId),
+          company_id: parsedCompanyId,
           type: newCustomer.type,
           name: newCustomer.name,
           organization_number: newCustomer.organizationNumber,
@@ -174,7 +198,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
   };
 
   const updateCustomer = (customer: Customer) => {
-    if (authService.isDatabaseConnected()) {
+    if (authService.isDatabaseConnected() && hasNumericCompanyId) {
       fetch(`${API_BASE_URL}/customers/${customer.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -199,7 +223,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
   };
 
   const deleteCustomer = (customerId: string) => {
-    if (authService.isDatabaseConnected()) {
+    if (authService.isDatabaseConnected() && hasNumericCompanyId) {
       fetch(`${API_BASE_URL}/customers/${customerId}`, { method: "DELETE" }).then(() => {
         setCustomers((prev) => prev.filter((c) => c.id !== customerId));
       });
@@ -219,13 +243,13 @@ export function BillingProvider({ children }: { children: ReactNode }) {
       createdAt: new Date().toISOString(),
     };
 
-    if (authService.isDatabaseConnected() && user) {
+    if (authService.isDatabaseConnected() && user && hasNumericCompanyId) {
       fetch(`${API_BASE_URL}/products`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           user_id: user.id,
-          company_id: Number(companyId),
+          company_id: parsedCompanyId,
           name: newProduct.name,
           description: newProduct.description,
           price: newProduct.price,
@@ -249,7 +273,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
   };
 
   const updateProduct = (product: Product) => {
-    if (authService.isDatabaseConnected()) {
+    if (authService.isDatabaseConnected() && hasNumericCompanyId) {
       fetch(`${API_BASE_URL}/products/${product.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -271,7 +295,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
   };
 
   const deleteProduct = (productId: string) => {
-    if (authService.isDatabaseConnected()) {
+    if (authService.isDatabaseConnected() && hasNumericCompanyId) {
       fetch(`${API_BASE_URL}/products/${productId}`, { method: "DELETE" }).then(() => {
         setProducts((prev) => prev.filter((p) => p.id !== productId));
       });
