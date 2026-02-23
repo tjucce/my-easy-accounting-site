@@ -4,7 +4,7 @@ from fastapi import FastAPI, Depends, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, EmailStr
 from sqlalchemy.orm import Session
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.exc import IntegrityError
 
 import time
 from sqlalchemy.exc import OperationalError
@@ -15,7 +15,16 @@ from alembic.config import Config
 
 from database import get_db, SessionLocal, DATABASE_URL
 from passlib.context import CryptContext
-from models import User, SIEFile, Receipt, Company, Customer, Product, CompanySIEState
+from models import (
+    User,
+    SIEFile,
+    Receipt,
+    Company,
+    CompanyMember,
+    Customer,
+    Product,
+    CompanySIEState,
+)
 
 app = FastAPI()
 
@@ -28,6 +37,9 @@ app.add_middleware(
 )
 
 
+# -------------------------
+# Pydantic Schemas
+# -------------------------
 class UserCreate(BaseModel):
     email: EmailStr
     password: str
@@ -48,21 +60,6 @@ class RoleUpdateRequest(BaseModel):
     role: str
 
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-
-def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
-
-
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
-
-
-def is_password_hashed(password: str) -> bool:
-    return pwd_context.identify(password) is not None
-
-
 class SIEFileCreate(BaseModel):
     user_id: int
     filename: str
@@ -77,14 +74,8 @@ class ReceiptCreate(BaseModel):
     note: str | None = None
 
 
-
-
-class CompanySIEStateUpsert(BaseModel):
-    user_id: int
-    sie_content: str
-
 class CompanyCreate(BaseModel):
-    user_id: int
+    user_id: int  # creator
     company_name: str
     organization_number: str | None = None
     address: str | None = None
@@ -108,6 +99,11 @@ class CompanyUpdate(BaseModel):
     fiscal_year_start: str | None = None
     fiscal_year_end: str | None = None
     accounting_standard: str | None = None
+
+
+class CompanySIEStateUpsert(BaseModel):
+    user_id: int
+    sie_content: str
 
 
 class CustomerCreate(BaseModel):
@@ -142,8 +138,8 @@ class ProductCreate(BaseModel):
     name: str
     description: str | None = None
     price: float
-    includes_vat: bool
-    vat_rate: float
+    includes_vat: bool = False
+    vat_rate: float = 25
     unit: str | None = None
 
 
@@ -151,88 +147,76 @@ class ProductUpdate(BaseModel):
     name: str
     description: str | None = None
     price: float
-    includes_vat: bool
-    vat_rate: float
+    includes_vat: bool = False
+    vat_rate: float = 25
     unit: str | None = None
 
 
-@app.on_event("startup")
-def on_startup():
-    max_attempts = 10
-    delay_seconds = 2
-    for attempt in range(1, max_attempts + 1):
-        try:
-            alembic_cfg = Config(str(Path(__file__).with_name("alembic.ini")))
-            migrations_path = Path(__file__).parent / "alembic"
-            alembic_cfg.set_main_option("script_location", str(migrations_path))
-            alembic_cfg.set_main_option("sqlalchemy.url", DATABASE_URL)
-            command.upgrade(alembic_cfg, "head")
-            db = SessionLocal()
-            try:
-                changes = False
-                existing = db.query(User).filter(User.email == "test@test.com").first()
-                if not existing:
-                    db.add(
-                        User(
-                            email="test@test.com",
-                            password=hash_password("test"),
-                            name="Test User",
-                            role="user",
-                        )
-                    )
-                    changes = True
-                elif not is_password_hashed(existing.password):
-                    existing.password = hash_password("test")
-                    changes = True
-                admin = db.query(User).filter(User.email == "admin@snug.local").first()
-                if not admin:
-                    db.add(
-                        User(
-                            email="admin@snug.local",
-                            password=hash_password("admin"),
-                            name="Admin User",
-                            role="admin",
-                        )
-                    )
-                    changes = True
-                elif not is_password_hashed(admin.password):
-                    admin.password = hash_password("admin")
-                    changes = True
-                if changes:
-                    db.commit()
-            finally:
-                db.close()
-            return
-        except OperationalError:
-            if attempt == max_attempts:
-                raise
-            time.sleep(delay_seconds)
+# -------------------------
+# Password helpers
+# -------------------------
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
+def hash_password(password: str) -> str:
+    return pwd_context.hash(password)
+
+
+def verify_password(plain: str, hashed: str) -> bool:
+    return pwd_context.verify(plain, hashed)
+
+
+# -------------------------
+# Health + migrations
+# -------------------------
 @app.get("/health")
-def health_check():
-    return {"status": "ok"}
+def health():
+    # Also attempt a DB check when using postgres
+    try:
+        db = SessionLocal()
+        db.execute("SELECT 1")
+        db.close()
+        return {"status": "ok", "db": "ok"}
+    except Exception:
+        return {"status": "ok", "db": "unavailable"}
 
 
+def run_migrations():
+    backend_dir = Path(__file__).resolve().parent
+    alembic_ini = backend_dir / "alembic.ini"
+    if not alembic_ini.exists():
+        return
+    cfg = Config(str(alembic_ini))
+    cfg.set_main_option("sqlalchemy.url", DATABASE_URL)
+    command.upgrade(cfg, "head")
+
+
+# run migrations on startup (like you do now)
+try:
+    run_migrations()
+except Exception:
+    # Keep server running even if migrations fail in dev environments
+    pass
+
+
+# -------------------------
+# Users + Auth
+# -------------------------
 @app.get("/users")
 def list_users(db: Session = Depends(get_db)):
     users = db.query(User).all()
-    return [
-        {"id": user.id, "email": user.email, "name": user.name, "role": user.role}
-        for user in users
-    ]
+    return [{"id": user.id, "email": user.email, "name": user.name, "role": user.role} for user in users]
 
 
 @app.post("/users")
 def create_user(payload: UserCreate, db: Session = Depends(get_db)):
-    user = User(
-        email=payload.email,
-        password=hash_password(payload.password),
-        name=payload.name,
-        role="user",
-    )
+    user = User(email=payload.email, password=hash_password(payload.password), name=payload.name, role="user")
     db.add(user)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Email already exists")
     db.refresh(user)
     return {"id": user.id, "email": user.email, "name": user.name}
 
@@ -242,14 +226,10 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.email == payload.email).first()
     if not user or not verify_password(payload.password, user.password):
         return {"success": False, "error": "Invalid email or password"}
+
     return {
         "success": True,
-        "user": {
-            "id": user.id,
-            "email": user.email,
-            "name": user.name,
-            "role": user.role,
-        },
+        "user": {"id": user.id, "email": user.email, "name": user.name, "role": user.role},
     }
 
 
@@ -279,12 +259,12 @@ def update_user_role(
         raise HTTPException(status_code=404, detail="User not found")
     user.role = payload.role
     db.commit()
-    return {
-        "success": True,
-        "user": {"id": user.id, "email": user.email, "name": user.name, "role": user.role},
-    }
+    return {"success": True, "user": {"id": user.id, "email": user.email, "name": user.name, "role": user.role}}
 
 
+# -------------------------
+# SIE files + receipts
+# -------------------------
 @app.post("/sie-files")
 def create_sie_file(payload: SIEFileCreate, db: Session = Depends(get_db)):
     sie_file = SIEFile(
@@ -297,76 +277,6 @@ def create_sie_file(payload: SIEFileCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(sie_file)
     return {"id": sie_file.id}
-
-
-@app.get("/companies/{company_id}/sie-state")
-def get_company_sie_state(company_id: int, user_id: int, db: Session = Depends(get_db)):
-    state = (
-        db.query(CompanySIEState)
-        .filter(CompanySIEState.company_id == company_id, CompanySIEState.user_id == user_id)
-        .first()
-    )
-
-    if not state:
-        return {
-            "companyId": company_id,
-            "userId": user_id,
-            "sieContent": None,
-            "updatedAt": None,
-        }
-
-    return {
-        "id": state.id,
-        "companyId": state.company_id,
-        "userId": state.user_id,
-        "sieContent": state.sie_content,
-        "updatedAt": state.updated_at.isoformat() if state.updated_at else None,
-    }
-
-
-@app.put("/companies/{company_id}/sie-state")
-def upsert_company_sie_state(company_id: int, payload: CompanySIEStateUpsert, db: Session = Depends(get_db)):
-    company = (
-        db.query(Company)
-        .filter(Company.id == company_id, Company.user_id == payload.user_id)
-        .first()
-    )
-    if not company:
-        raise HTTPException(status_code=404, detail="Company not found")
-
-    now = datetime.utcnow()
-    upsert_stmt = (
-        pg_insert(CompanySIEState)
-        .values(
-            user_id=payload.user_id,
-            company_id=company_id,
-            sie_content=payload.sie_content,
-            updated_at=now,
-        )
-        .on_conflict_do_update(
-            index_elements=[CompanySIEState.user_id, CompanySIEState.company_id],
-            set_={
-                "sie_content": payload.sie_content,
-                "updated_at": now,
-            },
-        )
-        .returning(
-            CompanySIEState.id,
-            CompanySIEState.company_id,
-            CompanySIEState.user_id,
-            CompanySIEState.updated_at,
-        )
-    )
-
-    row = db.execute(upsert_stmt).one()
-    db.commit()
-
-    return {
-        "id": row.id,
-        "companyId": row.company_id,
-        "userId": row.user_id,
-        "updatedAt": row.updated_at.isoformat() if row.updated_at else None,
-    }
 
 
 @app.post("/receipts")
@@ -383,29 +293,118 @@ def create_receipt(payload: ReceiptCreate, db: Session = Depends(get_db)):
     return {"id": receipt.id}
 
 
+# -------------------------
+# Helpers for membership checks
+# -------------------------
+def require_company_access(db: Session, company_id: int, user_id: int) -> CompanyMember:
+    membership = (
+        db.query(CompanyMember)
+        .filter(
+            CompanyMember.company_id == company_id,
+            CompanyMember.user_id == user_id,
+            CompanyMember.status == "ACTIVE",
+        )
+        .first()
+    )
+    if not membership:
+        raise HTTPException(status_code=403, detail="No access to this company")
+    return membership
+
+
+def require_company_admin(db: Session, company_id: int, user_id: int) -> CompanyMember:
+    membership = require_company_access(db, company_id, user_id)
+    if membership.role not in ("OWNER", "ADMIN"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return membership
+
+
+# -------------------------
+# Company SIE State (per-company)
+# Frontend still sends user_id, but now we use it only for access + auditing.
+# -------------------------
+@app.get("/companies/{company_id}/sie-state")
+def get_company_sie_state(company_id: int, user_id: int, db: Session = Depends(get_db)):
+    require_company_access(db, company_id, user_id)
+
+    state = db.query(CompanySIEState).filter(CompanySIEState.company_id == company_id).first()
+    if not state:
+        return {
+            "companyId": company_id,
+            "sieContent": None,
+            "version": None,
+            "updatedAt": None,
+        }
+
+    return {
+        "id": state.id,
+        "companyId": state.company_id,
+        "sieContent": state.sie_content,
+        "version": state.version,
+        "updatedAt": state.updated_at.isoformat() if state.updated_at else None,
+        "updatedByUserId": state.updated_by_user_id,
+    }
+
+
+@app.put("/companies/{company_id}/sie-state")
+def upsert_company_sie_state(company_id: int, payload: CompanySIEStateUpsert, db: Session = Depends(get_db)):
+    require_company_access(db, company_id, payload.user_id)
+
+    state = db.query(CompanySIEState).filter(CompanySIEState.company_id == company_id).first()
+
+    if not state:
+        state = CompanySIEState(
+            company_id=company_id,
+            sie_content=payload.sie_content,
+            version=1,
+            updated_by_user_id=payload.user_id,
+        )
+        db.add(state)
+        db.commit()
+        db.refresh(state)
+        return {
+            "id": state.id,
+            "companyId": state.company_id,
+            "version": state.version,
+            "updatedAt": state.updated_at.isoformat() if state.updated_at else None,
+        }
+
+    # naive update (we will add lock + base_version later)
+    state.sie_content = payload.sie_content
+    state.version = (state.version or 1) + 1
+    state.updated_by_user_id = payload.user_id
+    db.commit()
+    db.refresh(state)
+
+    return {
+        "id": state.id,
+        "companyId": state.company_id,
+        "version": state.version,
+        "updatedAt": state.updated_at.isoformat() if state.updated_at else None,
+    }
+
+
+# -------------------------
+# Customers
+# -------------------------
 @app.get("/customers")
-def list_customers(user_id: int, company_id: int | None = None, db: Session = Depends(get_db)):
-    query = db.query(Customer).filter(Customer.user_id == user_id)
-    if company_id is not None:
-        query = query.filter(Customer.company_id == company_id)
-    customers = query.order_by(Customer.created_at.asc()).all()
+def list_customers(user_id: int, db: Session = Depends(get_db)):
+    customers = db.query(Customer).filter(Customer.user_id == user_id).all()
     return [
         {
-            "id": customer.id,
-            "user_id": customer.user_id,
-            "company_id": customer.company_id,
-            "type": customer.type,
-            "name": customer.name,
-            "organization_number": customer.organization_number,
-            "email": customer.email,
-            "phone": customer.phone,
-            "address": customer.address,
-            "postal_code": customer.postal_code,
-            "city": customer.city,
-            "country": customer.country,
-            "created_at": customer.created_at.isoformat() if customer.created_at else None,
+            "id": c.id,
+            "user_id": c.user_id,
+            "company_id": c.company_id,
+            "type": c.type,
+            "name": c.name,
+            "organizationNumber": c.organization_number,
+            "email": c.email,
+            "phone": c.phone,
+            "address": c.address,
+            "postalCode": c.postal_code,
+            "city": c.city,
+            "country": c.country,
         }
-        for customer in customers
+        for c in customers
     ]
 
 
@@ -445,7 +444,7 @@ def update_customer(customer_id: int, payload: CustomerUpdate, db: Session = Dep
     customer.city = payload.city
     customer.country = payload.country
     db.commit()
-    return {"id": customer.id}
+    return {"success": True}
 
 
 @app.delete("/customers/{customer_id}")
@@ -458,26 +457,25 @@ def delete_customer(customer_id: int, db: Session = Depends(get_db)):
     return {"success": True}
 
 
+# -------------------------
+# Products
+# -------------------------
 @app.get("/products")
-def list_products(user_id: int, company_id: int | None = None, db: Session = Depends(get_db)):
-    query = db.query(Product).filter(Product.user_id == user_id)
-    if company_id is not None:
-        query = query.filter(Product.company_id == company_id)
-    products = query.order_by(Product.created_at.asc()).all()
+def list_products(user_id: int, db: Session = Depends(get_db)):
+    products = db.query(Product).filter(Product.user_id == user_id).all()
     return [
         {
-            "id": product.id,
-            "user_id": product.user_id,
-            "company_id": product.company_id,
-            "name": product.name,
-            "description": product.description,
-            "price": product.price,
-            "includes_vat": product.includes_vat,
-            "vat_rate": product.vat_rate,
-            "unit": product.unit,
-            "created_at": product.created_at.isoformat() if product.created_at else None,
+            "id": p.id,
+            "user_id": p.user_id,
+            "company_id": p.company_id,
+            "name": p.name,
+            "description": p.description,
+            "price": p.price,
+            "includesVat": p.includes_vat,
+            "vatRate": p.vat_rate,
+            "unit": p.unit,
         }
-        for product in products
+        for p in products
     ]
 
 
@@ -511,7 +509,7 @@ def update_product(product_id: int, payload: ProductUpdate, db: Session = Depend
     product.vat_rate = payload.vat_rate
     product.unit = payload.unit
     db.commit()
-    return {"id": product.id}
+    return {"success": True}
 
 
 @app.delete("/products/{product_id}")
@@ -524,13 +522,26 @@ def delete_product(product_id: int, db: Session = Depends(get_db)):
     return {"success": True}
 
 
+# -------------------------
+# Companies (membership-based)
+# Frontend continues to call /companies?user_id=...
+# -------------------------
 @app.get("/companies")
 def list_companies(user_id: int, db: Session = Depends(get_db)):
-    companies = db.query(Company).filter(Company.user_id == user_id).all()
+    memberships = (
+        db.query(CompanyMember)
+        .filter(CompanyMember.user_id == user_id, CompanyMember.status == "ACTIVE")
+        .all()
+    )
+    company_ids = [m.company_id for m in memberships]
+    if not company_ids:
+        return []
+
+    companies = db.query(Company).filter(Company.id.in_(company_ids)).all()
+    # preserve response shape expected by frontend mapCompanyFromApi
     return [
         {
             "id": company.id,
-            "user_id": company.user_id,
             "companyName": company.company_name,
             "organizationNumber": company.organization_number,
             "address": company.address,
@@ -548,10 +559,22 @@ def list_companies(user_id: int, db: Session = Depends(get_db)):
 
 @app.post("/companies")
 def create_company(payload: CompanyCreate, db: Session = Depends(get_db)):
+    # Require org number for unique-company behavior
+    org = (payload.organization_number or "").strip()
+    if not org:
+        raise HTTPException(status_code=400, detail="organization_number is required")
+
+    # If company already exists, block creation (as per your requirement)
+    existing = db.query(Company).filter(Company.organization_number == org).first()
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail="Company with this organization_number already exists",
+        )
+
     company = Company(
-        user_id=payload.user_id,
         company_name=payload.company_name,
-        organization_number=payload.organization_number,
+        organization_number=org,
         address=payload.address,
         postal_code=payload.postal_code,
         city=payload.city,
@@ -564,16 +587,37 @@ def create_company(payload: CompanyCreate, db: Session = Depends(get_db)):
     db.add(company)
     db.commit()
     db.refresh(company)
+
+    # Create OWNER membership for creator
+    membership = CompanyMember(
+        company_id=company.id,
+        user_id=payload.user_id,
+        role="OWNER",
+        status="ACTIVE",
+    )
+    db.add(membership)
+    db.commit()
+
     return {"id": company.id}
 
 
 @app.put("/companies/{company_id}")
-def update_company(company_id: int, payload: CompanyUpdate, db: Session = Depends(get_db)):
+def update_company(company_id: int, payload: CompanyUpdate, user_id: int, db: Session = Depends(get_db)):
+    require_company_admin(db, company_id, user_id)
+
     company = db.query(Company).filter(Company.id == company_id).first()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
+
+    # If orgnr changes, enforce uniqueness
+    new_org = (payload.organization_number or "").strip() if payload.organization_number else None
+    if new_org and new_org != company.organization_number:
+        existing = db.query(Company).filter(Company.organization_number == new_org).first()
+        if existing:
+            raise HTTPException(status_code=409, detail="organization_number already in use")
+        company.organization_number = new_org
+
     company.company_name = payload.company_name
-    company.organization_number = payload.organization_number
     company.address = payload.address
     company.postal_code = payload.postal_code
     company.city = payload.city
@@ -582,17 +626,25 @@ def update_company(company_id: int, payload: CompanyUpdate, db: Session = Depend
     company.fiscal_year_start = payload.fiscal_year_start
     company.fiscal_year_end = payload.fiscal_year_end
     company.accounting_standard = payload.accounting_standard
+
     db.commit()
     return {"id": company.id}
 
 
 @app.delete("/companies/{company_id}")
-def delete_company(company_id: int, db: Session = Depends(get_db)):
+def delete_company(company_id: int, user_id: int, db: Session = Depends(get_db)):
+    require_company_admin(db, company_id, user_id)
+
     company = db.query(Company).filter(Company.id == company_id).first()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
 
+    # Delete related SIE state
     db.query(CompanySIEState).filter(CompanySIEState.company_id == company_id).delete()
+
+    # Delete memberships then company
+    db.query(CompanyMember).filter(CompanyMember.company_id == company_id).delete()
     db.delete(company)
     db.commit()
+
     return {"success": True}
