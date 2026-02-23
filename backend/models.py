@@ -1,4 +1,15 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Float, Boolean, UniqueConstraint
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    DateTime,
+    ForeignKey,
+    Text,
+    Float,
+    Boolean,
+    UniqueConstraint,
+    Index,
+)
 from sqlalchemy.orm import relationship
 from datetime import datetime
 
@@ -17,6 +28,61 @@ class User(Base):
 
     sie_files = relationship("SIEFile", back_populates="user")
     receipts = relationship("Receipt", back_populates="user")
+
+    company_memberships = relationship("CompanyMember", back_populates="user")
+
+
+class Company(Base):
+    """
+    Company is a root-entity.
+    It is NOT owned by a single user. Access is controlled via CompanyMember.
+    """
+    __tablename__ = "companies"
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_name = Column(String(255), nullable=False)
+
+    # Must be unique across ALL companies (one company can only be created once).
+    organization_number = Column(String(20), nullable=True)
+
+    address = Column(String(255), nullable=True)
+    postal_code = Column(String(20), nullable=True)
+    city = Column(String(255), nullable=True)
+    country = Column(String(255), nullable=True)
+    vat_number = Column(String(50), nullable=True)
+
+    fiscal_year_start = Column(String(10), nullable=True)
+    fiscal_year_end = Column(String(10), nullable=True)
+    accounting_standard = Column(String(2), nullable=True)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    members = relationship("CompanyMember", back_populates="company")
+
+
+# Roles and status are stored as strings for now (simple + easy).
+# You can later swap to an Enum if you want.
+class CompanyMember(Base):
+    __tablename__ = "company_members"
+    __table_args__ = (
+        UniqueConstraint("company_id", "user_id", name="uq_company_members_company_user"),
+        Index("ix_company_members_company_id", "company_id"),
+        Index("ix_company_members_user_id", "user_id"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(Integer, ForeignKey("companies.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+
+    # OWNER, ADMIN, ACCOUNTANT, MEMBER, READ_ONLY
+    role = Column(String(50), nullable=False, default="MEMBER")
+    # INVITED, ACTIVE, DISABLED
+    status = Column(String(50), nullable=False, default="ACTIVE")
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    company = relationship("Company", back_populates="members")
+    user = relationship("User", back_populates="company_memberships")
 
 
 class SIEFile(Base):
@@ -43,26 +109,6 @@ class Receipt(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
     user = relationship("User", back_populates="receipts")
-
-
-class Company(Base):
-    __tablename__ = "companies"
-
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    company_name = Column(String(255), nullable=False)
-    organization_number = Column(String(20), nullable=True)
-    address = Column(String(255), nullable=True)
-    postal_code = Column(String(20), nullable=True)
-    city = Column(String(255), nullable=True)
-    country = Column(String(255), nullable=True)
-    vat_number = Column(String(50), nullable=True)
-    fiscal_year_start = Column(String(10), nullable=True)
-    fiscal_year_end = Column(String(10), nullable=True)
-    accounting_standard = Column(String(2), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-
-    user = relationship("User")
 
 
 class Customer(Base):
@@ -99,11 +145,22 @@ class Product(Base):
 
 
 class CompanySIEState(Base):
+    """
+    Store one SIE state per company (not per user).
+    For now we keep SIE as one blob. Later we will add lock/version endpoints.
+    """
     __tablename__ = "company_sie_states"
-    __table_args__ = (UniqueConstraint("user_id", "company_id", name="uq_company_sie_states_user_company"),)
+    __table_args__ = (
+        UniqueConstraint("company_id", name="uq_company_sie_states_company"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     company_id = Column(Integer, ForeignKey("companies.id"), nullable=False)
+
     sie_content = Column(Text, nullable=False)
+
+    # optimistic version number (will be used later for conflict prevention)
+    version = Column(Integer, nullable=False, default=1)
+
+    updated_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
