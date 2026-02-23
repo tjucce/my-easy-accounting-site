@@ -40,35 +40,8 @@ export default function CompanyPage() {
   const [isNewCompany, setIsNewCompany] = useState(false);
   const [originalCompanyId, setOriginalCompanyId] = useState<string | null>(null);
   const [showCompanyRequiredAlert, setShowCompanyRequiredAlert] = useState(false);
-  const [showK2K3ConfirmAlert, setShowK2K3ConfirmAlert] = useState(false);
-  const [pendingAccountingStandard, setPendingAccountingStandard] = useState<"K2" | "K3" | null>(null);
-  
-  // Ref to track unsaved state for cleanup on unmount
-  const unsavedRef = useRef<{ isNew: boolean; companyId: string; originalId: string | null }>({
-    isNew: false, companyId: "", originalId: null,
-  });
-
-  // Keep ref in sync
-  useEffect(() => {
-    unsavedRef.current = {
-      isNew: isNewCompany,
-      companyId: activeCompany?.id || "",
-      originalId: originalCompanyId,
-    };
-  }, [isNewCompany, activeCompany?.id, originalCompanyId]);
-
-  // Cleanup unsaved company when navigating away
-  useEffect(() => {
-    return () => {
-      const { isNew, companyId, originalId } = unsavedRef.current;
-      if (isNew && companyId) {
-        deleteCompany(companyId);
-        if (originalId) {
-          setActiveCompany(originalId);
-        }
-      }
-    };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  const [showAccountingStandardConfirmAlert, setShowAccountingStandardConfirmAlert] = useState(false);
+  const [pendingAccountingStandard, setPendingAccountingStandard] = useState<"K2" | "K3" | "" | null>(null);
   
   // Check if we were redirected because company is required
   useEffect(() => {
@@ -88,7 +61,7 @@ export default function CompanyPage() {
     vatNumber: "",
     fiscalYearStart: "01-01",
     fiscalYearEnd: "12-31",
-    accountingStandard: "" as "" | "K2" | "K3",
+    accountingStandard: "" as "K2" | "K3" | "",
   });
 
   useEffect(() => {
@@ -103,7 +76,7 @@ export default function CompanyPage() {
         vatNumber: activeCompany.vatNumber,
         fiscalYearStart: activeCompany.fiscalYearStart,
         fiscalYearEnd: activeCompany.fiscalYearEnd,
-        accountingStandard: activeCompany.accountingStandard || "",
+        accountingStandard: activeCompany.accountingStandard,
       });
     }
   }, [activeCompany]);
@@ -149,7 +122,12 @@ export default function CompanyPage() {
       toast.error("Country is required");
       return;
     }
-    
+
+    if (!formData.accountingStandard) {
+      toast.error("Accounting standard (K2/K3) is required");
+      return;
+    }
+
     updateCompany({
       ...formData,
       id: activeCompany.id,
@@ -162,6 +140,15 @@ export default function CompanyPage() {
   };
 
   const handleChange = (field: string, value: string) => {
+    if (field === "accountingStandard") {
+      const nextStandard = value as "K2" | "K3" | "";
+      if (nextStandard && formData.accountingStandard && formData.accountingStandard !== nextStandard) {
+        setPendingAccountingStandard(nextStandard);
+        setShowAccountingStandardConfirmAlert(true);
+        return;
+      }
+    }
+
     setFormData(prev => ({ ...prev, [field]: value }));
   };
 
@@ -195,6 +182,7 @@ export default function CompanyPage() {
       vatNumber: "",
       fiscalYearStart: "01-01",
       fiscalYearEnd: "12-31",
+      accountingStandard: "",
     });
     setActiveCompany(newCompany.id);
     setIsNewCompany(true);
@@ -285,13 +273,19 @@ export default function CompanyPage() {
 
   const handleDeleteCompany = () => {
     if (!activeCompany) return;
-    
+    if (!canDeleteActiveCompany) {
+      toast.error("You must have at least two saved companies before deleting one");
+      return;
+    }
+
     deleteCompany(activeCompany.id);
     toast.success("Company deleted");
   };
 
   // Check if this is an existing saved company (has org number saved)
   const isExistingCompany = activeCompany && activeCompany.organizationNumber.replace(/-/g, "").length === 10;
+  const savedCompaniesCount = companies.filter((company) => company.organizationNumber.replace(/-/g, "").length === 10).length;
+  const canDeleteActiveCompany = !!activeCompany && !!isExistingCompany && savedCompaniesCount >= 2;
 
   return (
     <>
@@ -311,31 +305,38 @@ export default function CompanyPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={showK2K3ConfirmAlert} onOpenChange={setShowK2K3ConfirmAlert}>
+
+      <AlertDialog open={showAccountingStandardConfirmAlert} onOpenChange={setShowAccountingStandardConfirmAlert}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Change Accounting Standard?</AlertDialogTitle>
+            <AlertDialogTitle>Change accounting standard?</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to change the accounting standard to {pendingAccountingStandard}? This may affect how financial statements are prepared.
+              Are you sure you want to change accounting standard (K2/K3)?
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => { setShowK2K3ConfirmAlert(false); setPendingAccountingStandard(null); }}>
+            <AlertDialogCancel
+              onClick={() => {
+                setPendingAccountingStandard(null);
+                setShowAccountingStandardConfirmAlert(false);
+              }}
+            >
               No
             </AlertDialogCancel>
-            <AlertDialogAction onClick={() => {
-              if (pendingAccountingStandard) {
-                setFormData(prev => ({ ...prev, accountingStandard: pendingAccountingStandard }));
-              }
-              setShowK2K3ConfirmAlert(false);
-              setPendingAccountingStandard(null);
-            }}>
+            <AlertDialogAction
+              onClick={() => {
+                if (pendingAccountingStandard) {
+                  setFormData((prev) => ({ ...prev, accountingStandard: pendingAccountingStandard }));
+                }
+                setPendingAccountingStandard(null);
+                setShowAccountingStandardConfirmAlert(false);
+              }}
+            >
               Yes
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
       <div className="min-h-screen flex flex-col">
         <Header />
         <main className="flex-1 container py-8">
@@ -416,8 +417,7 @@ export default function CompanyPage() {
                     size="sm" 
                     className="text-destructive hover:text-destructive"
                     onClick={handleDeleteCompany}
-                    disabled={companies.length <= 1}
-                    title={companies.length <= 1 ? "Cannot delete the only company" : "Delete company"}
+                    disabled={!canDeleteActiveCompany}
                   >
                     <Trash2 className="h-4 w-4 mr-2" />
                     Delete
@@ -510,6 +510,28 @@ export default function CompanyPage() {
                       />
                     </div>
 
+                    <div className="space-y-2">
+                      <Label htmlFor="accountingStandard">Accounting Standard (K2/K3) *</Label>
+                      <Select
+                        value={formData.accountingStandard || "none"}
+                        onValueChange={(value) => handleChange("accountingStandard", value === "none" ? "" : value)}
+                      >
+                        <SelectTrigger id="accountingStandard">
+                          <SelectValue placeholder="Choose K2 or K3" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Choose K2 or K3</SelectItem>
+                          <SelectItem value="K2">K2</SelectItem>
+                          <SelectItem value="K3">K3</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {!canDeleteActiveCompany && (
+                        <p className="text-xs text-muted-foreground">
+                          Save at least two companies before deleting one.
+                        </p>
+                      )}
+                    </div>
+
                     <div className="grid md:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="fiscalYearStart">Fiscal Year Start</Label>
@@ -529,34 +551,6 @@ export default function CompanyPage() {
                           placeholder="12-31"
                         />
                       </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label>Accounting Standard</Label>
-                      <Select 
-                        value={formData.accountingStandard || ""} 
-                        onValueChange={(v) => {
-                          const newVal = v as "K2" | "K3";
-                          // If already has a standard set and trying to change it, confirm
-                          if (formData.accountingStandard && formData.accountingStandard !== newVal) {
-                            setPendingAccountingStandard(newVal);
-                            setShowK2K3ConfirmAlert(true);
-                          } else {
-                            setFormData(prev => ({ ...prev, accountingStandard: newVal }));
-                          }
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue placeholder="Select K2 or K3..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="K2">K2</SelectItem>
-                          <SelectItem value="K3">K3</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <p className="text-xs text-muted-foreground">
-                        K2 is for smaller companies, K3 is for larger companies
-                      </p>
                     </div>
 
                     <div className="flex gap-3">
