@@ -80,15 +80,20 @@ export function BillingProvider({ children }: { children: ReactNode }) {
       setCustomers([]);
       setProducts([]);
       setInvoices([]);
+      setTemplates([]);
       setNextInvoiceNumber(1);
       return;
     }
 
     const storedInvoices = localStorage.getItem(`billing_invoices_${companyId}`);
     const storedNextNumber = localStorage.getItem(`billing_next_invoice_${companyId}`);
+    const storedTemplates = localStorage.getItem(`billing_templates_${companyId}`);
 
     if (storedInvoices) setInvoices(JSON.parse(storedInvoices));
     else setInvoices([]);
+
+    if (storedTemplates) setTemplates(JSON.parse(storedTemplates));
+    else setTemplates([]);
 
     if (storedNextNumber) setNextInvoiceNumber(parseInt(storedNextNumber));
     else setNextInvoiceNumber(1);
