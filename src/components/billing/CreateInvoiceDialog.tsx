@@ -28,9 +28,12 @@ import {
 } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Plus, Trash2, UserPlus, Package, X, CalendarIcon } from "lucide-react";
-import { Customer, Product, InvoiceLine, Invoice, calculateInvoiceLine, calculateProductPrice } from "@/lib/billing/types";
+import { Plus, Trash2, UserPlus, Package, X, CalendarIcon, AlertCircle } from "lucide-react";
+import { Customer, Product, InvoiceLine, Invoice, DocumentType, calculateInvoiceLine, calculateProductPrice } from "@/lib/billing/types";
 import { useBilling } from "@/contexts/BillingContext";
+import { useVat } from "@/contexts/VatContext";
+import { useVatPeriodLock } from "@/contexts/VatPeriodLockContext";
+import { getActiveVatCodes, getOutgoingCodes, getVatCodeById } from "@/lib/vat/codes";
 import { formatAmount } from "@/lib/bas-accounts";
 import { toast } from "sonner";
 import { format, addDays } from "date-fns";
@@ -40,11 +43,47 @@ interface CreateInvoiceDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   inline?: boolean;
+  documentType?: DocumentType;
+  onInvoiceCreated?: (invoice: Invoice) => void;
 }
 
-export function CreateInvoiceDialog({ open, onOpenChange, inline }: CreateInvoiceDialogProps) {
+// Helper: format postal code as XXX XX
+function formatPostalCode(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 5);
+  if (digits.length > 3) return digits.slice(0, 3) + " " + digits.slice(3);
+  return digits;
+}
+
+// Helper: format org number as XXXXXX-XXXX
+function formatOrgNumber(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 10);
+  if (digits.length > 6) return digits.slice(0, 6) + "-" + digits.slice(6);
+  return digits;
+}
+
+// Helper: filter name (no digits)
+function filterName(value: string): string {
+  return value.replace(/[0-9]/g, "");
+}
+
+// Helper: filter phone (no letters)
+function filterPhone(value: string): string {
+  return value.replace(/[a-zA-ZåäöÅÄÖ]/g, "");
+}
+
+// Helper: filter city (no digits)
+function filterCity(value: string): string {
+  return value.replace(/[0-9]/g, "");
+}
+
+export function CreateInvoiceDialog({ open, onOpenChange, inline, documentType = "invoice", onInvoiceCreated }: CreateInvoiceDialogProps) {
   const { customers, products, addCustomer, addProduct, updateProduct, createInvoice } = useBilling();
-  
+  const { vatCodes, vatSettings } = useVat();
+  const { isDateInLockedPeriod } = useVatPeriodLock();
+  const outgoingCodes = getOutgoingCodes(vatCodes);
+  const defaultSalesCodeId = vatSettings.defaultSalesCodeId || (outgoingCodes[0]?.id ?? "SE25");
+
+  const [priceMode, setPriceMode] = useState<"excl" | "incl">("excl");
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
   const [inlineCustomer, setInlineCustomer] = useState<Omit<Customer, "id" | "companyId" | "createdAt"> | null>(null);
   const [showNewCustomerForm, setShowNewCustomerForm] = useState(false);
@@ -63,8 +102,9 @@ export function CreateInvoiceDialog({ open, onOpenChange, inline }: CreateInvoic
     quantity: number;
     unitPrice: number;
     vatRate: number;
-    sourceProductId?: string; // track which product this came from
-  }>>([{ productName: "", description: "", quantity: 1, unitPrice: 0, vatRate: 25 }]);
+    vatCodeId?: string;
+    sourceProductId?: string;
+  }>>([{ productName: "", description: "", quantity: 1, unitPrice: 0, vatRate: 25, vatCodeId: defaultSalesCodeId }]);
 
   // Customer form state
   const [custType, setCustType] = useState<"private" | "company">("company");
@@ -75,7 +115,6 @@ export function CreateInvoiceDialog({ open, onOpenChange, inline }: CreateInvoic
   const [custAddress, setCustAddress] = useState("");
   const [custPostalCode, setCustPostalCode] = useState("");
   const [custCity, setCustCity] = useState("");
-  const [custCountry, setCustCountry] = useState("Sweden");
 
   // Product form state
   const [prodName, setProdName] = useState("");
@@ -84,6 +123,8 @@ export function CreateInvoiceDialog({ open, onOpenChange, inline }: CreateInvoic
   const [prodVatRate, setProdVatRate] = useState("25");
   const [prodUnit, setProdUnit] = useState("st");
   const [prodIncludesVat, setProdIncludesVat] = useState(false);
+
+  const docLabel = documentType === "quote" ? "Quote" : "Invoice";
 
   const getCustomerDisplay = () => {
     if (inlineCustomer) return inlineCustomer.name;
@@ -110,12 +151,21 @@ export function CreateInvoiceDialog({ open, onOpenChange, inline }: CreateInvoic
       toast.error("Please fill in all required customer fields");
       return;
     }
+    if (custType === "company" && custOrgNum.replace(/\D/g, "").length !== 10) {
+      toast.error("Organization number must be 10 digits (XXXXXX-XXXX)");
+      return;
+    }
+    const postalDigits = custPostalCode.replace(/\D/g, "");
+    if (postalDigits.length !== 5) {
+      toast.error("Postal code must be 5 digits");
+      return;
+    }
     const data: Omit<Customer, "id" | "companyId" | "createdAt"> = {
       type: custType, name: custName.trim(),
       organizationNumber: custType === "company" ? custOrgNum : undefined,
       email: custEmail.trim() || undefined, phone: custPhone.trim() || undefined,
-      address: custAddress.trim(), postalCode: custPostalCode.trim(),
-      city: custCity.trim(), country: custCountry.trim(),
+      address: custAddress.trim(), postalCode: formatPostalCode(custPostalCode),
+      city: custCity.trim(), country: "Sweden",
     };
     setShowNewCustomerForm(false);
     setPendingCustomerData(data);
@@ -244,15 +294,19 @@ export function CreateInvoiceDialog({ open, onOpenChange, inline }: CreateInvoic
   };
 
   const addEmptyLine = () => {
-    setLines(prev => [...prev, { productName: "", description: "", quantity: 1, unitPrice: 0, vatRate: 25 }]);
+    setLines(prev => [...prev, { productName: "", description: "", quantity: 1, unitPrice: 0, vatRate: 25, vatCodeId: defaultSalesCodeId }]);
   };
 
   const invoiceLines: InvoiceLine[] = lines.filter(l => l.productName).map((l) => {
-    const calc = calculateInvoiceLine(l.quantity, l.unitPrice, l.vatRate);
+    // I "incl"-läge tolkar vi unitPrice som inkl. moms och räknar tillbaka till exkl.
+    const effectiveExcl = priceMode === "incl" && l.vatRate > 0
+      ? l.unitPrice / (1 + l.vatRate / 100)
+      : l.unitPrice;
+    const calc = calculateInvoiceLine(l.quantity, effectiveExcl, l.vatRate);
     return {
       id: crypto.randomUUID(), productId: "", productName: l.productName,
-      description: l.description, quantity: l.quantity, unitPrice: l.unitPrice,
-      vatRate: l.vatRate, ...calc,
+      description: l.description, quantity: l.quantity, unitPrice: effectiveExcl,
+      vatRate: l.vatRate, vatCodeId: l.vatCodeId, ...calc,
     };
   });
 
@@ -264,81 +318,126 @@ export function CreateInvoiceDialog({ open, onOpenChange, inline }: CreateInvoic
     const customer = getCustomerData();
     if (!customer) { toast.error("Please select or create a customer"); return; }
     if (invoiceLines.length === 0) { toast.error("Please add at least one line item"); return; }
+    const issueIso = format(issueDate, "yyyy-MM-dd");
+    if (isDateInLockedPeriod(issueIso)) {
+      toast.error("Momsperioden är låst. Skapa en kreditfaktura istället.");
+      return;
+    }
+    if (vatSettings.registered === false && invoiceLines.some(l => l.vatAmount > 0)) {
+      toast.error("Företaget är inte momsregistrerat — moms får inte debiteras.");
+      return;
+    }
+    const missingCode = invoiceLines.some(l => !l.vatCodeId);
+    if (missingCode) {
+      toast.warning("En eller flera fakturarader saknar momskod.");
+    }
 
-    createInvoice({
+    const created = createInvoice({
+      documentType,
       customerId: customer.id, customerName: customer.name, customerAddress: customer.address,
-      issueDate: format(issueDate, "yyyy-MM-dd"), dueDate: format(dueDate, "yyyy-MM-dd"),
+      issueDate: issueIso, dueDate: format(dueDate, "yyyy-MM-dd"),
       lines: invoiceLines, subtotal, totalVat, total, status: "draft",
     });
 
-    toast.success("Invoice created");
+    toast.success(`${docLabel} created`);
     onOpenChange(false);
+    window.scrollTo({ top: 0, behavior: "smooth" });
     setSelectedCustomerId("");
     setInlineCustomer(null);
-    setLines([{ productName: "", description: "", quantity: 1, unitPrice: 0, vatRate: 25 }]);
+    setLines([{ productName: "", description: "", quantity: 1, unitPrice: 0, vatRate: 25, vatCodeId: defaultSalesCodeId }]);
+    onInvoiceCreated?.(created);
   };
 
   const formContent = (
-    <div className="space-y-6">
-      {/* Customer Section */}
-      <div className="space-y-3">
-        <Label className="text-base font-semibold">Customer</Label>
-        <div className="flex gap-2">
-          {customers.length > 0 && (
+    <div className="space-y-4">
+      {/* Customer + Dates */}
+      <div className="flex gap-3">
+        <div className="max-w-[180px] space-y-1.5">
+          <Label className="text-xs font-semibold">Customer</Label>
+          {customers.length > 0 ? (
             <Select value={selectedCustomerId} onValueChange={(v) => { setSelectedCustomerId(v); setInlineCustomer(null); }}>
-              <SelectTrigger className="flex-1"><SelectValue placeholder="Select existing customer..." /></SelectTrigger>
+              <SelectTrigger className="h-9 text-sm w-[180px]"><SelectValue placeholder="Select customer..." /></SelectTrigger>
               <SelectContent>
                 {customers.map(c => (<SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>))}
               </SelectContent>
             </Select>
+          ) : (
+            <div className="h-9 flex items-center text-sm text-muted-foreground border rounded-md px-3 bg-muted/30 w-[180px]">No customers yet</div>
           )}
-          <Button type="button" variant="outline" onClick={() => setShowNewCustomerForm(true)}>
-            <UserPlus className="h-4 w-4 mr-2" />New Customer
+          <Button type="button" variant="outline" size="sm" className="h-7 text-xs px-2.5 w-auto" onClick={() => setShowNewCustomerForm(true)}>
+            <UserPlus className="h-3.5 w-3.5 mr-1" />New Customer
           </Button>
         </div>
-        {getCustomerDisplay() && (
-          <p className="text-sm text-muted-foreground">Customer: <span className="text-foreground font-medium">{getCustomerDisplay()}</span></p>
-        )}
+        <div className="w-[160px] shrink-0 space-y-1.5">
+          <div className="border border-border rounded-lg p-2.5 space-y-2.5 bg-muted/20">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Issue Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 w-full justify-start text-left font-normal text-sm">
+                    <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
+                    {format(issueDate, "yyyy-MM-dd")}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar mode="single" selected={issueDate} onSelect={(d) => d && setIssueDate(d)} initialFocus className="p-3 pointer-events-auto" />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Due Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-9 w-full justify-start text-left font-normal text-sm">
+                    <CalendarIcon className="mr-1.5 h-3.5 w-3.5" />
+                    {format(dueDate, "yyyy-MM-dd")}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar mode="single" selected={dueDate} onSelect={(d) => d && setDueDate(d)} initialFocus className="p-3 pointer-events-auto" />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Dates with Calendar */}
-      <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-2">
-          <Label>Issue Date</Label>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className={cn("w-full justify-start text-left font-normal")}>
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {format(issueDate, "yyyy-MM-dd")}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar mode="single" selected={issueDate} onSelect={(d) => d && setIssueDate(d)} initialFocus className="p-3 pointer-events-auto" />
-            </PopoverContent>
-          </Popover>
-        </div>
-        <div className="space-y-2">
-          <Label>Due Date</Label>
-          <Popover>
-            <PopoverTrigger asChild>
-              <Button variant="outline" className={cn("w-full justify-start text-left font-normal")}>
-                <CalendarIcon className="mr-2 h-4 w-4" />
-                {format(dueDate, "yyyy-MM-dd")}
-              </Button>
-            </PopoverTrigger>
-            <PopoverContent className="w-auto p-0" align="start">
-              <Calendar mode="single" selected={dueDate} onSelect={(d) => d && setDueDate(d)} initialFocus className="p-3 pointer-events-auto" />
-            </PopoverContent>
-          </Popover>
-        </div>
-      </div>
+      {getCustomerDisplay() && (
+        <p className="text-xs text-muted-foreground">Customer: <span className="text-foreground font-medium">{getCustomerDisplay()}</span></p>
+      )}
 
       {/* Line Items */}
-      <div className="space-y-3">
-        <Label className="text-base font-semibold">Line Items</Label>
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label className="text-sm font-semibold">Line Items</Label>
+          <div className="flex items-center gap-1 text-xs">
+            <span className="text-muted-foreground">Pris:</span>
+            <Select value={priceMode} onValueChange={(v) => setPriceMode(v as "excl" | "incl")}>
+              <SelectTrigger className="h-7 text-xs w-[140px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="excl">Exkl. moms</SelectItem>
+                <SelectItem value="incl">Inkl. moms</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
 
         {lines.map((line, index) => (
-          <div key={index} className="border rounded-lg p-3 bg-muted/20 space-y-2">
+          <div key={index} className="border rounded-lg p-2 bg-muted/20 space-y-1 relative">
+            {canAddAsProduct(index) && (
+              <div className="absolute top-1 right-1">
+                <Button type="button" variant="outline" size="sm" className="h-6 text-[10px] px-1.5" onClick={() => handleAddProductFromLine(index)}>
+                  <Plus className="h-3 w-3 mr-0.5" />Save Product
+                </Button>
+              </div>
+            )}
+            {isLineFromExistingProduct(index) && hasLinePriceChanged(index) && (
+              <div className="absolute top-1 right-1">
+                <Button type="button" variant="outline" size="sm" className="h-6 text-[10px] px-1.5" onClick={() => handleUpdateProductFromLine(index)}>
+                  Update Product
+                </Button>
+              </div>
+            )}
             <div className="grid grid-cols-12 gap-2 items-end">
               <div className="col-span-3 space-y-1">
                 <Label className="text-xs">Name</Label>
@@ -354,7 +453,7 @@ export function CreateInvoiceDialog({ open, onOpenChange, inline }: CreateInvoic
                       }
                     }}
                   >
-                    <SelectTrigger>
+                    <SelectTrigger className="h-9 text-sm">
                       <SelectValue placeholder="Select product...">
                         {line.productName || "Select product..."}
                       </SelectValue>
@@ -365,54 +464,52 @@ export function CreateInvoiceDialog({ open, onOpenChange, inline }: CreateInvoic
                     </SelectContent>
                   </Select>
                 ) : (
-                  <Input value={line.productName} onChange={e => updateLine(index, "productName", e.target.value)} placeholder="Item name" />
+                  <Input value={line.productName} onChange={e => updateLine(index, "productName", e.target.value)} placeholder="Item name" className="h-9 text-sm" />
                 )}
                 {(line.sourceProductId === undefined || !products.some(p => p.id === line.sourceProductId)) && products.length > 0 && (
-                  <Input value={line.productName} onChange={e => updateLine(index, "productName", e.target.value)} placeholder="Enter item name" className="mt-1" />
+                  <Input value={line.productName} onChange={e => updateLine(index, "productName", e.target.value)} placeholder="Enter item name" className="mt-1 h-9 text-sm" />
                 )}
               </div>
               <div className="col-span-3 space-y-1">
                 <Label className="text-xs">Description</Label>
-                <Input value={line.description} onChange={e => updateLine(index, "description", e.target.value)} placeholder="Optional" />
+                <Input value={line.description} onChange={e => updateLine(index, "description", e.target.value)} placeholder="Optional" className="h-9 text-sm" />
               </div>
               <div className="col-span-1 space-y-1">
                 <Label className="text-xs">Qty</Label>
-                <Input type="number" min="1" value={line.quantity} onChange={e => updateLine(index, "quantity", parseInt(e.target.value) || 1)} />
+                <Input type="number" min="1" value={line.quantity} onChange={e => updateLine(index, "quantity", parseInt(e.target.value) || 1)} className="h-9 text-sm" />
               </div>
               <div className="col-span-2 space-y-1">
-                <Label className="text-xs">Price (excl VAT)</Label>
-                <Input type="number" min="0" step="1" value={line.unitPrice} onChange={e => updateLine(index, "unitPrice", parseFloat(e.target.value) || 0)} />
+                <Label className="text-xs">{priceMode === "incl" ? "Pris (inkl. moms)" : "Pris (exkl. moms)"}</Label>
+                <Input type="number" min="0" step="1" value={line.unitPrice || ""} onChange={e => updateLine(index, "unitPrice", parseFloat(e.target.value) || 0)} onFocus={e => { if (e.target.value === "0") e.target.value = ""; }} placeholder="0" className="h-9 text-sm" />
               </div>
               <div className="col-span-2 space-y-1">
-                <Label className="text-xs">VAT %</Label>
-                <Select value={line.vatRate.toString()} onValueChange={v => updateLine(index, "vatRate", parseFloat(v))}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                <Label className="text-xs">Momskod</Label>
+                <Select
+                  value={line.vatCodeId || "__none__"}
+                  onValueChange={(v) => {
+                    const codeId = v === "__none__" ? undefined : v;
+                    updateLine(index, "vatCodeId", codeId as any);
+                    const code = getVatCodeById(vatCodes, codeId);
+                    if (code) updateLine(index, "vatRate", code.sats);
+                  }}
+                >
+                  <SelectTrigger className="h-9 text-xs"><SelectValue placeholder="Välj..." /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="0">0%</SelectItem>
-                    <SelectItem value="6">6%</SelectItem>
-                    <SelectItem value="12">12%</SelectItem>
-                    <SelectItem value="25">25%</SelectItem>
+                    <SelectItem value="__none__">Ingen momskod</SelectItem>
+                    {outgoingCodes.map((c) => (
+                      <SelectItem key={c.id} value={c.id}>
+                        <span className="font-mono mr-1">{c.code}</span>
+                        <span className="text-muted-foreground">({c.sats}%)</span>
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
               <div className="col-span-1 flex gap-1">
-                <Button type="button" variant="ghost" size="icon" onClick={() => removeLine(index)} disabled={lines.length <= 1}>
+                <Button type="button" variant="ghost" size="icon" className="h-9 w-9" onClick={() => removeLine(index)} disabled={lines.length <= 1}>
                   <Trash2 className="h-4 w-4 text-destructive" />
                 </Button>
               </div>
-            </div>
-            {/* Add Product / Update Product buttons */}
-            <div className="flex gap-2">
-              {canAddAsProduct(index) && (
-                <Button type="button" variant="outline" size="sm" onClick={() => handleAddProductFromLine(index)}>
-                  <Plus className="h-3 w-3 mr-1" />Add Product
-                </Button>
-              )}
-              {isLineFromExistingProduct(index) && hasLinePriceChanged(index) && (
-                <Button type="button" variant="outline" size="sm" onClick={() => handleUpdateProductFromLine(index)}>
-                  Update Product
-                </Button>
-              )}
             </div>
           </div>
         ))}
@@ -424,7 +521,7 @@ export function CreateInvoiceDialog({ open, onOpenChange, inline }: CreateInvoic
 
       {/* Totals */}
       {invoiceLines.length > 0 && (
-        <div className="bg-muted/50 rounded-lg p-4 space-y-2 text-sm">
+        <div className="bg-muted/50 rounded-lg p-3 space-y-1 text-sm">
           <div className="flex justify-between">
             <span className="text-muted-foreground">Subtotal (excl. VAT):</span>
             <span className="font-mono">{formatAmount(subtotal)} SEK</span>
@@ -433,7 +530,7 @@ export function CreateInvoiceDialog({ open, onOpenChange, inline }: CreateInvoic
             <span className="text-muted-foreground">Total VAT:</span>
             <span className="font-mono">{formatAmount(totalVat)} SEK</span>
           </div>
-          <div className="flex justify-between font-semibold border-t pt-2">
+          <div className="flex justify-between font-semibold border-t pt-1">
             <span>Total (incl. VAT):</span>
             <span className="font-mono">{formatAmount(total)} SEK</span>
           </div>
@@ -443,7 +540,7 @@ export function CreateInvoiceDialog({ open, onOpenChange, inline }: CreateInvoic
       {/* Actions */}
       <div className="flex gap-3">
         <Button type="button" variant="outline" onClick={() => onOpenChange(false)} className="flex-1">Cancel</Button>
-        <Button type="button" onClick={handleCreateInvoice} className="flex-1">Create Invoice</Button>
+        <Button type="button" onClick={handleCreateInvoice} className="flex-1">Create {docLabel}</Button>
       </div>
     </div>
   );
@@ -452,8 +549,8 @@ export function CreateInvoiceDialog({ open, onOpenChange, inline }: CreateInvoic
     <>
       {/* New Customer Form Dialog */}
       <Dialog open={showNewCustomerForm} onOpenChange={setShowNewCustomerForm}>
-        <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>New Customer for Invoice</DialogTitle></DialogHeader>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
+          <DialogHeader><DialogTitle>New Customer for {docLabel}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Customer Type *</Label>
@@ -465,19 +562,34 @@ export function CreateInvoiceDialog({ open, onOpenChange, inline }: CreateInvoic
                 </SelectContent>
               </Select>
             </div>
-            <div className="space-y-2"><Label>Name *</Label><Input value={custName} onChange={e => setCustName(e.target.value)} placeholder="Customer name" /></div>
+            <div className="space-y-2">
+              <Label>Name *</Label>
+              <Input value={custName} onChange={e => setCustName(filterName(e.target.value))} placeholder="Customer name" />
+            </div>
             {custType === "company" && (
-              <div className="space-y-2"><Label>Organization Number</Label><Input value={custOrgNum} onChange={e => setCustOrgNum(e.target.value)} placeholder="XXXXXX-XXXX" /></div>
+              <div className="space-y-2">
+                <Label>Organization Number *</Label>
+                <Input value={custOrgNum} onChange={e => setCustOrgNum(formatOrgNumber(e.target.value))} placeholder="XXXXXX-XXXX" maxLength={11} />
+              </div>
             )}
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2"><Label>Email</Label><Input value={custEmail} onChange={e => setCustEmail(e.target.value)} placeholder="email@example.com" /></div>
-              <div className="space-y-2"><Label>Phone</Label><Input value={custPhone} onChange={e => setCustPhone(e.target.value)} placeholder="+46 70 123 45 67" /></div>
+              <div className="space-y-2"><Label>Phone</Label><Input value={custPhone} onChange={e => setCustPhone(filterPhone(e.target.value))} placeholder="+46 70 123 45 67" /></div>
             </div>
             <div className="space-y-2"><Label>Address *</Label><Input value={custAddress} onChange={e => setCustAddress(e.target.value)} placeholder="Street address" /></div>
             <div className="grid grid-cols-3 gap-4">
-              <div className="space-y-2"><Label>Postal Code *</Label><Input value={custPostalCode} onChange={e => setCustPostalCode(e.target.value)} placeholder="123 45" /></div>
-              <div className="space-y-2"><Label>City *</Label><Input value={custCity} onChange={e => setCustCity(e.target.value)} placeholder="Stockholm" /></div>
-              <div className="space-y-2"><Label>Country</Label><Input value={custCountry} onChange={e => setCustCountry(e.target.value)} /></div>
+              <div className="space-y-2">
+                <Label>Postal Code *</Label>
+                <Input value={custPostalCode} onChange={e => setCustPostalCode(formatPostalCode(e.target.value))} placeholder="XXX XX" maxLength={6} />
+              </div>
+              <div className="space-y-2">
+                <Label>City *</Label>
+                <Input value={custCity} onChange={e => setCustCity(filterCity(e.target.value))} placeholder="Stockholm" />
+              </div>
+              <div className="space-y-2">
+                <Label>Country</Label>
+                <Input value="Sweden" disabled className="bg-muted" />
+              </div>
             </div>
             <div className="flex gap-3 pt-4">
               <Button type="button" variant="outline" onClick={() => setShowNewCustomerForm(false)} className="flex-1">Cancel</Button>
@@ -490,7 +602,7 @@ export function CreateInvoiceDialog({ open, onOpenChange, inline }: CreateInvoic
       {/* New Product Form Dialog */}
       <Dialog open={showNewProductForm} onOpenChange={setShowNewProductForm}>
         <DialogContent className="max-w-lg">
-          <DialogHeader><DialogTitle>New Product for Invoice</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>New Product for {docLabel}</DialogTitle></DialogHeader>
           <div className="space-y-4">
             <div className="space-y-2"><Label>Product/Service Name *</Label><Input value={prodName} onChange={e => setProdName(e.target.value)} placeholder="Consulting Service" /></div>
             <div className="space-y-2"><Label>Description</Label><Input value={prodDescription} onChange={e => setProdDescription(e.target.value)} placeholder="Optional" /></div>
@@ -530,7 +642,7 @@ export function CreateInvoiceDialog({ open, onOpenChange, inline }: CreateInvoic
             </div>
             <div className="flex gap-3 pt-4">
               <Button type="button" variant="outline" onClick={() => setShowNewProductForm(false)} className="flex-1">Cancel</Button>
-              <Button type="button" onClick={handleConfirmInlineProduct} className="flex-1">Add to Invoice</Button>
+              <Button type="button" onClick={handleConfirmInlineProduct} className="flex-1">Add to {docLabel}</Button>
             </div>
           </div>
         </DialogContent>
@@ -544,7 +656,7 @@ export function CreateInvoiceDialog({ open, onOpenChange, inline }: CreateInvoic
             <AlertDialogDescription>Would you like to save <strong>{pendingCustomerData?.name}</strong> to your customer list?</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => handleSaveCustomerDecision(false)}>No, just use for this invoice</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => handleSaveCustomerDecision(false)}>No, just use for this {docLabel.toLowerCase()}</AlertDialogCancel>
             <AlertDialogAction onClick={() => handleSaveCustomerDecision(true)}>Yes, save to customer list</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -558,7 +670,7 @@ export function CreateInvoiceDialog({ open, onOpenChange, inline }: CreateInvoic
             <AlertDialogDescription>Would you like to save <strong>{pendingProductData?.name}</strong> to your product list?</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => handleSaveProductDecision(false)}>No, just use for this invoice</AlertDialogCancel>
+            <AlertDialogCancel onClick={() => handleSaveProductDecision(false)}>No, just use for this {docLabel.toLowerCase()}</AlertDialogCancel>
             <AlertDialogAction onClick={() => handleSaveProductDecision(true)}>Yes, save to product list</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -571,15 +683,15 @@ export function CreateInvoiceDialog({ open, onOpenChange, inline }: CreateInvoic
     return (
       <>
         <Card>
-          <CardHeader>
+          <CardHeader className="py-3 px-4">
             <div className="flex items-center justify-between">
-              <CardTitle>Create Invoice</CardTitle>
-              <Button variant="ghost" size="icon" onClick={() => onOpenChange(false)}>
-                <X className="h-5 w-5" />
+              <CardTitle className="text-base">Create {docLabel}</CardTitle>
+              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onOpenChange(false)}>
+                <X className="h-4 w-4" />
               </Button>
             </div>
           </CardHeader>
-          <CardContent>{formContent}</CardContent>
+          <CardContent className="px-4 pb-4 pt-0">{formContent}</CardContent>
         </Card>
         {subDialogs}
       </>
@@ -591,7 +703,7 @@ export function CreateInvoiceDialog({ open, onOpenChange, inline }: CreateInvoic
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader><DialogTitle>Create Invoice</DialogTitle></DialogHeader>
+          <DialogHeader><DialogTitle>Create {docLabel}</DialogTitle></DialogHeader>
           {formContent}
         </DialogContent>
       </Dialog>

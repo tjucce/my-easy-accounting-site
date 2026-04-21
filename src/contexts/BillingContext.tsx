@@ -2,6 +2,7 @@ import { createContext, useContext, useState, useEffect, ReactNode } from "react
 import { Customer, Product, Invoice } from "@/lib/billing/types";
 import { useAuth } from "./AuthContext";
 import { authService } from "@/services/auth";
+import { shouldUseLocalStorageMode } from "@/lib/runtimeMode";
 
 interface BillingContextType {
   customers: Customer[];
@@ -18,6 +19,7 @@ interface BillingContextType {
   getProductById: (productId: string) => Product | undefined;
   createInvoice: (invoice: Omit<Invoice, "id" | "companyId" | "invoiceNumber" | "createdAt">) => Invoice;
   updateInvoiceStatus: (invoiceId: string, status: Invoice["status"], paidDate?: string) => void;
+  convertQuoteToInvoice: (quoteId: string) => Invoice | null;
   deleteInvoice: (invoiceId: string) => void;
   getInvoiceById: (invoiceId: string) => Invoice | undefined;
 }
@@ -62,6 +64,8 @@ export function BillingProvider({ children }: { children: ReactNode }) {
   const companyId = activeCompany?.id || "";
   const parsedCompanyId = Number(companyId);
   const hasNumericCompanyId = Number.isFinite(parsedCompanyId);
+  const useLocalStorageMode = shouldUseLocalStorageMode();
+  const shouldUseDatabase = authService.isDatabaseConnected() && !useLocalStorageMode;
 
   useEffect(() => {
     let isCurrentEffect = true;
@@ -83,7 +87,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
     if (storedNextNumber) setNextInvoiceNumber(parseInt(storedNextNumber));
     else setNextInvoiceNumber(1);
 
-    if (authService.isDatabaseConnected() && user && hasNumericCompanyId) {
+    if (shouldUseDatabase && user && hasNumericCompanyId) {
       fetch(`${API_BASE_URL}/customers?user_id=${user.id}&company_id=${parsedCompanyId}`)
         .then((response) => response.json())
         .then((payload) => {
@@ -132,18 +136,18 @@ export function BillingProvider({ children }: { children: ReactNode }) {
     return () => {
       isCurrentEffect = false;
     };
-  }, [companyId, user]);
+  }, [companyId, user, hasNumericCompanyId, parsedCompanyId, shouldUseDatabase]);
 
   const saveCustomers = (newCustomers: Customer[]) => {
     setCustomers(newCustomers);
-    if (!authService.isDatabaseConnected() && companyId) {
+    if (companyId) {
       localStorage.setItem(`billing_customers_${companyId}`, JSON.stringify(newCustomers));
     }
   };
 
   const saveProducts = (newProducts: Product[]) => {
     setProducts(newProducts);
-    if (!authService.isDatabaseConnected() && companyId) {
+    if (companyId) {
       localStorage.setItem(`billing_products_${companyId}`, JSON.stringify(newProducts));
     }
   };
@@ -151,7 +155,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
   const saveInvoices = (newInvoices: Invoice[], newNextNumber: number) => {
     setInvoices(newInvoices);
     setNextInvoiceNumber(newNextNumber);
-    if (!authService.isDatabaseConnected() && companyId) {
+    if (companyId) {
       localStorage.setItem(`billing_invoices_${companyId}`, JSON.stringify(newInvoices));
       localStorage.setItem(`billing_next_invoice_${companyId}`, newNextNumber.toString());
     }
@@ -165,7 +169,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
       createdAt: new Date().toISOString(),
     };
 
-    if (authService.isDatabaseConnected() && user && hasNumericCompanyId) {
+    if (shouldUseDatabase && user && hasNumericCompanyId) {
       fetch(`${API_BASE_URL}/customers`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -198,7 +202,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
   };
 
   const updateCustomer = (customer: Customer) => {
-    if (authService.isDatabaseConnected() && hasNumericCompanyId) {
+    if (shouldUseDatabase && hasNumericCompanyId) {
       fetch(`${API_BASE_URL}/customers/${customer.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -226,7 +230,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
   };
 
   const deleteCustomer = (customerId: string) => {
-    if (authService.isDatabaseConnected() && hasNumericCompanyId) {
+    if (shouldUseDatabase && hasNumericCompanyId) {
       fetch(`${API_BASE_URL}/customers/${customerId}`, { method: "DELETE" }).then((response) => {
         if (!response.ok) {
           return;
@@ -249,7 +253,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
       createdAt: new Date().toISOString(),
     };
 
-    if (authService.isDatabaseConnected() && user && hasNumericCompanyId) {
+    if (shouldUseDatabase && user && hasNumericCompanyId) {
       fetch(`${API_BASE_URL}/products`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -279,7 +283,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
   };
 
   const updateProduct = (product: Product) => {
-    if (authService.isDatabaseConnected() && hasNumericCompanyId) {
+    if (shouldUseDatabase && hasNumericCompanyId) {
       fetch(`${API_BASE_URL}/products/${product.id}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -304,7 +308,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
   };
 
   const deleteProduct = (productId: string) => {
-    if (authService.isDatabaseConnected() && hasNumericCompanyId) {
+    if (shouldUseDatabase && hasNumericCompanyId) {
       fetch(`${API_BASE_URL}/products/${productId}`, { method: "DELETE" }).then((response) => {
         if (!response.ok) {
           return;
@@ -324,6 +328,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
       ...invoiceData,
       id: crypto.randomUUID(),
       companyId,
+      documentType: invoiceData.documentType || "invoice",
       invoiceNumber: nextInvoiceNumber,
       createdAt: new Date().toISOString(),
     };
@@ -336,6 +341,26 @@ export function BillingProvider({ children }: { children: ReactNode }) {
       inv.id === invoiceId ? { ...inv, status, paidDate } : inv
     );
     saveInvoices(newInvoices, nextInvoiceNumber);
+  };
+
+  const convertQuoteToInvoice = (quoteId: string): Invoice | null => {
+    const quote = invoices.find(inv => inv.id === quoteId);
+    if (!quote) return null;
+    const newInvoice: Invoice = {
+      ...quote,
+      id: crypto.randomUUID(),
+      documentType: "invoice",
+      invoiceNumber: nextInvoiceNumber,
+      status: "sent",
+      issueDate: new Date().toISOString().split("T")[0],
+      createdAt: new Date().toISOString(),
+    };
+    const newInvoices = [
+      ...invoices.map(inv => inv.id === quoteId ? { ...inv, status: "accepted" as const } : inv),
+      newInvoice,
+    ];
+    saveInvoices(newInvoices, nextInvoiceNumber + 1);
+    return newInvoice;
   };
 
   const deleteInvoice = (invoiceId: string) => {
@@ -360,6 +385,7 @@ export function BillingProvider({ children }: { children: ReactNode }) {
       getProductById,
       createInvoice,
       updateInvoiceStatus,
+      convertQuoteToInvoice,
       deleteInvoice,
       getInvoiceById,
     }}>

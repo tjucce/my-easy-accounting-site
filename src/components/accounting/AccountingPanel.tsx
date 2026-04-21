@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
-import { Plus, Eye, Calendar, Search } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Plus, Eye, Calendar, Search, Lock, Columns2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/contexts/AuthContext";
 import { useAccounting, Voucher } from "@/contexts/AccountingContext";
+import { useFiscalLock } from "@/contexts/FiscalLockContext";
 import { VoucherForm } from "./VoucherForm";
 import { VoucherDetails } from "./VoucherDetails";
 import { VoucherPagination } from "./VoucherPagination";
@@ -14,6 +15,7 @@ import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { YearSelector } from "@/components/ui/year-selector";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
+import { toast } from "sonner";
 
 const VOUCHERS_PER_PAGE = 10;
 
@@ -22,6 +24,10 @@ interface AccountingPanelProps {
   incomingDuplicate?: Voucher | null;
   onClearIncomingDuplicate?: () => void;
   onDuplicateToOther?: (voucher: Voucher) => void;
+  autoOpenCreate?: boolean;
+  onAutoOpenCreateConsumed?: () => void;
+  onToggleCompare?: () => void;
+  prefillVoucher?: any;
 }
 
 export function AccountingPanel({
@@ -29,15 +35,22 @@ export function AccountingPanel({
   incomingDuplicate,
   onClearIncomingDuplicate,
   onDuplicateToOther,
+  autoOpenCreate,
+  onAutoOpenCreateConsumed,
+  onToggleCompare,
+  prefillVoucher,
 }: AccountingPanelProps) {
   const { user } = useAuth();
   const { vouchers } = useAccounting();
+  const { isYearLocked } = useFiscalLock();
   const [showCreateForm, setShowCreateForm] = useState(false);
   const [selectedVoucher, setSelectedVoucher] = useState<Voucher | null>(null);
   const [editingVoucher, setEditingVoucher] = useState<Voucher | null>(null);
   const [duplicatingVoucher, setDuplicatingVoucher] = useState<Voucher | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
 
-  const [selectedYear, setSelectedYear] = useState<number | undefined>(new Date().getFullYear());
+  const today = new Date();
+  const [selectedYear, setSelectedYear] = useState<number | undefined>(today.getFullYear());
   const [voucherStartDate, setVoucherStartDate] = useState<Date | undefined>(
     selectedYear ? new Date(selectedYear, 0, 1) : undefined
   );
@@ -46,6 +59,16 @@ export function AccountingPanel({
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+
+  const currentYearLocked = selectedYear !== undefined ? isYearLocked(selectedYear) : false;
+
+  // Auto-open create form from header shortcut
+  useEffect(() => {
+    if (autoOpenCreate) {
+      handleCreateClick();
+      onAutoOpenCreateConsumed?.();
+    }
+  }, [autoOpenCreate]);
 
   useEffect(() => {
     if (selectedYear !== undefined) {
@@ -58,7 +81,6 @@ export function AccountingPanel({
     setCurrentPage(1);
   }, [searchQuery, voucherStartDate, voucherEndDate]);
 
-  // Handle incoming duplicate from other panel
   useEffect(() => {
     if (incomingDuplicate) {
       setDuplicatingVoucher(incomingDuplicate);
@@ -105,21 +127,13 @@ export function AccountingPanel({
     setShowCreateForm(false);
     setEditingVoucher(null);
     setDuplicatingVoucher(null);
-  };
-
-  const handleEditVoucher = () => {
-    if (selectedVoucher) {
-      setEditingVoucher(selectedVoucher);
-      setSelectedVoucher(null);
-    }
+    window.scrollTo({ top: 0, behavior: "instant" });
   };
 
   const handleDuplicateVoucher = (voucher: Voucher) => {
     if (onDuplicateToOther) {
-      // In compare mode, duplicate to other panel
       onDuplicateToOther(voucher);
     } else {
-      // Normal mode - duplicate in place
       setDuplicatingVoucher(voucher);
       setShowCreateForm(true);
       setSelectedVoucher(null);
@@ -144,14 +158,14 @@ export function AccountingPanel({
     .slice(startIndex, startIndex + VOUCHERS_PER_PAGE);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4" ref={listRef}>
       {/* Create/Edit/Duplicate Form */}
       {(showCreateForm || editingVoucher) && (
         <VoucherForm
           onCancel={handleFormCancel}
           onSuccess={handleFormSuccess}
           editVoucher={editingVoucher || undefined}
-          duplicateFrom={duplicatingVoucher || undefined}
+          duplicateFrom={duplicatingVoucher || (prefillVoucher ? { ...prefillVoucher, voucherNumber: 0, date: new Date().toISOString().split("T")[0], lines: prefillVoucher.lines.map((l: any) => ({ ...l, id: crypto.randomUUID() })) } as Voucher : undefined)}
         />
       )}
 
@@ -160,26 +174,18 @@ export function AccountingPanel({
         <VoucherDetails
           voucher={selectedVoucher}
           onClose={() => setSelectedVoucher(null)}
-          onEdit={handleEditVoucher}
           onDuplicate={handleDuplicateVoucher}
         />
       )}
 
       {/* Voucher List */}
       {!showCreateForm && !selectedVoucher && !editingVoucher && (
-        <>
-          <div className="flex justify-end">
-            <Button onClick={handleCreateClick} size={compact ? "sm" : "default"}>
-              <Plus className="h-4 w-4 mr-2" />
-              Create Voucher
-            </Button>
-          </div>
+         <>
 
           {/* Filters */}
           <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className={compact ? "text-base" : "text-lg"}>Voucher Period</CardTitle>
-              <CardDescription>Filter vouchers by date range</CardDescription>
+            <CardHeader className="py-3 pb-2">
+              <CardTitle className="text-base">Voucher Period</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap items-center gap-2">
@@ -203,6 +209,7 @@ export function AccountingPanel({
                       mode="single"
                       selected={voucherStartDate}
                       onSelect={setVoucherStartDate}
+                      disabled={{ after: today }}
                       initialFocus
                       className="p-3 pointer-events-auto"
                     />
@@ -228,6 +235,7 @@ export function AccountingPanel({
                       mode="single"
                       selected={voucherEndDate}
                       onSelect={setVoucherEndDate}
+                      disabled={{ after: today }}
                       initialFocus
                       className="p-3 pointer-events-auto"
                     />
@@ -242,42 +250,55 @@ export function AccountingPanel({
                   Clear
                 </Button>
               </div>
+              {currentYearLocked && (
+                <p className="text-sm text-destructive mt-2 flex items-center gap-1">
+                  <Lock className="h-3 w-3" /> This fiscal year is locked. Vouchers cannot be reverted.
+                </p>
+              )}
             </CardContent>
           </Card>
 
-          {/* Search */}
+          {/* Vouchers heading + Compare + Search */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <h2 className={cn("font-semibold text-foreground", compact ? "text-lg" : "text-2xl")}>
               Vouchers ({filteredVouchers.length})
             </h2>
-            <div className="relative w-full sm:w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="text"
-                placeholder="Search by name or number..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-9"
-              />
+            <div className="flex items-center gap-2">
+              {onToggleCompare && (
+                <Button variant="outline" size="sm" onClick={onToggleCompare}>
+                  <Columns2 className="h-4 w-4 mr-2" />
+                  Compare
+                </Button>
+              )}
+              <div className="relative w-full sm:w-64">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  type="text"
+                  placeholder="Search by name or number..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
             </div>
           </div>
 
           {/* Table */}
-          <div className="bg-card rounded-xl border border-border overflow-hidden">
-            <table className="w-full">
+          <div className="bg-card rounded-lg border border-border overflow-hidden">
+            <table className="w-full text-xs">
               <thead>
                 <tr className="border-b border-border bg-muted/30">
-                  <th className="text-left py-3 px-4 font-semibold text-foreground">#</th>
-                  <th className="text-left py-3 px-4 font-semibold text-foreground">Date</th>
-                  <th className="text-left py-3 px-4 font-semibold text-foreground">Description</th>
-                  <th className="text-right py-3 px-4 font-semibold text-foreground">Amount</th>
-                  <th className="text-center py-3 px-4 font-semibold text-foreground">Actions</th>
+                  <th className="text-left py-2 px-3 font-medium text-foreground">#</th>
+                  <th className="text-left py-2 px-3 font-medium text-foreground">Date</th>
+                  <th className="text-left py-2 px-3 font-medium text-foreground">Description</th>
+                  <th className="text-right py-2 px-3 font-medium text-foreground">Amount</th>
+                  <th className="text-center py-2 px-3 font-medium text-foreground">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {paginatedVouchers.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="py-8 text-center text-muted-foreground">
+                    <td colSpan={5} className="py-6 text-center text-muted-foreground">
                       No vouchers found matching your search.
                     </td>
                   </tr>
@@ -290,24 +311,25 @@ export function AccountingPanel({
                         className="border-b border-border/50 hover:bg-muted/20 cursor-pointer transition-colors"
                         onClick={() => handleVoucherClick(voucher)}
                       >
-                        <td className="py-3 px-4 font-mono text-secondary">
+                        <td className="py-2 px-3 font-mono text-secondary">
                           {voucher.voucherNumber}
                         </td>
-                        <td className="py-3 px-4">{voucher.date}</td>
-                        <td className="py-3 px-4 text-muted-foreground">{voucher.description}</td>
-                        <td className="py-3 px-4 text-right font-mono">
+                        <td className="py-2 px-3 text-muted-foreground">{voucher.date}</td>
+                        <td className="py-2 px-3 text-foreground">{voucher.description}</td>
+                        <td className="py-2 px-3 text-right font-mono font-medium">
                           {formatAmount(total)} SEK
                         </td>
-                        <td className="py-3 px-4 text-center">
+                        <td className="py-2 px-3 text-center">
                           <Button
                             variant="ghost"
                             size="sm"
+                            className="h-6 text-xs px-2"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleVoucherClick(voucher);
                             }}
                           >
-                            <Eye className="h-4 w-4 mr-1" />
+                            <Eye className="h-3 w-3 mr-1" />
                             View
                           </Button>
                         </td>
