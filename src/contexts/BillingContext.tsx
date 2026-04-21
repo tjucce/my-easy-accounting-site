@@ -380,11 +380,59 @@ export function BillingProvider({ children }: { children: ReactNode }) {
 
   const getInvoiceById = (invoiceId: string) => invoices.find(inv => inv.id === invoiceId);
 
+  const saveTemplates = (newTemplates: VoucherTemplate[]) => {
+    setTemplates(newTemplates);
+    if (companyId) {
+      localStorage.setItem(`billing_templates_${companyId}`, JSON.stringify(newTemplates));
+    }
+  };
+
+  const addTemplate = (data: Omit<VoucherTemplate, "id" | "companyId" | "createdAt">) => {
+    const newTemplate: VoucherTemplate = {
+      ...data,
+      id: crypto.randomUUID(),
+      companyId,
+      createdAt: new Date().toISOString(),
+    };
+    let next = [...templates, newTemplate];
+    if (newTemplate.isDefault) {
+      next = next.map(t => t.id === newTemplate.id ? t : { ...t, isDefault: false });
+    } else if (templates.length === 0) {
+      // First template becomes default automatically
+      next = next.map(t => t.id === newTemplate.id ? { ...t, isDefault: true } : t);
+    }
+    saveTemplates(next);
+    return newTemplate;
+  };
+
+  const updateTemplate = (template: VoucherTemplate) => {
+    let next = templates.map(t => t.id === template.id ? template : t);
+    if (template.isDefault) {
+      next = next.map(t => t.id === template.id ? t : { ...t, isDefault: false });
+    }
+    saveTemplates(next);
+  };
+
+  const deleteTemplate = (templateId: string) => {
+    const next = templates.filter(t => t.id !== templateId);
+    // If we removed the default, promote the first remaining
+    if (next.length > 0 && !next.some(t => t.isDefault)) {
+      next[0] = { ...next[0], isDefault: true };
+    }
+    saveTemplates(next);
+  };
+
+  const setDefaultTemplate = (templateId: string) => {
+    const next = templates.map(t => ({ ...t, isDefault: t.id === templateId }));
+    saveTemplates(next);
+  };
+
   return (
     <BillingContext.Provider value={{
       customers,
       products,
       invoices,
+      templates,
       nextInvoiceNumber,
       addCustomer,
       updateCustomer,
@@ -399,6 +447,10 @@ export function BillingProvider({ children }: { children: ReactNode }) {
       convertQuoteToInvoice,
       deleteInvoice,
       getInvoiceById,
+      addTemplate,
+      updateTemplate,
+      deleteTemplate,
+      setDefaultTemplate,
     }}>
       {children}
     </BillingContext.Provider>
