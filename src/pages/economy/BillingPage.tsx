@@ -522,12 +522,31 @@ function InvoiceDetailView({
           <AlertDialogHeader>
             <AlertDialogTitle>Invoice Paid</AlertDialogTitle>
             <AlertDialogDescription>
-              Do you want to create a voucher for this invoice?
+              {templates.length > 0
+                ? "Create a voucher automatically using one of your templates?"
+                : "Do you want to create a voucher for this invoice? You can set up a template under Billing → Templates to make this automatic next time."}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {templates.length > 0 && (
+            <div className="space-y-2">
+              <Label className="text-sm">Template</Label>
+              <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
+                <SelectTrigger><SelectValue placeholder="Pick a template" /></SelectTrigger>
+                <SelectContent>
+                  {templates.map(t => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}{t.isDefault ? " (default)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => handleMarkPaid(false)}>No</AlertDialogCancel>
-            <AlertDialogAction onClick={() => handleMarkPaid(true)}>Yes, Create Voucher</AlertDialogAction>
+            <AlertDialogAction onClick={() => handleMarkPaid(true)}>
+              {templates.length > 0 ? "Yes, Create Voucher" : "Yes, Open Voucher Form"}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
