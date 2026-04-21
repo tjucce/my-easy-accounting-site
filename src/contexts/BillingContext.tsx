@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { Customer, Product, Invoice } from "@/lib/billing/types";
+import { Customer, Product, Invoice, VoucherTemplate } from "@/lib/billing/types";
 import { useAuth } from "./AuthContext";
 import { authService } from "@/services/auth";
 import { shouldUseLocalStorageMode } from "@/lib/runtimeMode";
@@ -8,6 +8,7 @@ interface BillingContextType {
   customers: Customer[];
   products: Product[];
   invoices: Invoice[];
+  templates: VoucherTemplate[];
   nextInvoiceNumber: number;
   addCustomer: (customer: Omit<Customer, "id" | "companyId" | "createdAt">) => Customer;
   updateCustomer: (customer: Customer) => void;
@@ -22,6 +23,10 @@ interface BillingContextType {
   convertQuoteToInvoice: (quoteId: string) => Invoice | null;
   deleteInvoice: (invoiceId: string) => void;
   getInvoiceById: (invoiceId: string) => Invoice | undefined;
+  addTemplate: (template: Omit<VoucherTemplate, "id" | "companyId" | "createdAt">) => VoucherTemplate;
+  updateTemplate: (template: VoucherTemplate) => void;
+  deleteTemplate: (templateId: string) => void;
+  setDefaultTemplate: (templateId: string) => void;
 }
 
 const BillingContext = createContext<BillingContextType | undefined>(undefined);
