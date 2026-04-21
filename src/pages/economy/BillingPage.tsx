@@ -1,12 +1,11 @@
-import { useState } from "react";
-import { FileText, Users, Package, Plus, Trash2, Edit, Receipt, Eye, X, Calendar } from "lucide-react";
+import { useState, useEffect } from "react";
+import { FileText, Users, Package, Plus, Trash2, Edit, Receipt, Eye, X, Calendar, Send, Download, Mail, CheckCircle, DollarSign } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import {
   Dialog,
   DialogContent,
@@ -15,22 +14,59 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+
 import { useAuth } from "@/contexts/AuthContext";
 import { useBilling } from "@/contexts/BillingContext";
-import { Customer, Product, Invoice, calculateProductPrice } from "@/lib/billing/types";
+import { Customer, Product, Invoice, DocumentType, calculateProductPrice } from "@/lib/billing/types";
 import { toast } from "sonner";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Lock } from "lucide-react";
 import { formatAmount } from "@/lib/bas-accounts";
 import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { CreateInvoiceDialog } from "@/components/billing/CreateInvoiceDialog";
+import { exportInvoicePDF } from "@/lib/pdf-export";
+
+// Helper functions for input validation
+function formatPostalCode(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 5);
+  if (digits.length > 3) return digits.slice(0, 3) + " " + digits.slice(3);
+  return digits;
+}
+
+function formatOrgNumber(value: string): string {
+  const digits = value.replace(/\D/g, "").slice(0, 10);
+  if (digits.length > 6) return digits.slice(0, 6) + "-" + digits.slice(6);
+  return digits;
+}
+
+function filterName(value: string): string {
+  return value.replace(/[0-9]/g, "");
+}
+
+function filterPhone(value: string): string {
+  return value.replace(/[a-zA-ZåäöÅÄÖ]/g, "");
+}
+
+function filterCity(value: string): string {
+  return value.replace(/[0-9]/g, "");
+}
 
 // Customer Form Component
 function CustomerForm({ 
@@ -50,14 +86,18 @@ function CustomerForm({
   const [address, setAddress] = useState(editCustomer?.address || "");
   const [postalCode, setPostalCode] = useState(editCustomer?.postalCode || "");
   const [city, setCity] = useState(editCustomer?.city || "");
-  const [country, setCountry] = useState(editCustomer?.country || "Sweden");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) { toast.error("Name is required"); return; }
     if (!address.trim()) { toast.error("Address is required"); return; }
-    if (!postalCode.trim()) { toast.error("Postal code is required"); return; }
+    const postalDigits = postalCode.replace(/\D/g, "");
+    if (postalDigits.length !== 5) { toast.error("Postal code must be 5 digits"); return; }
     if (!city.trim()) { toast.error("City is required"); return; }
+    if (type === "company" && organizationNumber.replace(/\D/g, "").length !== 10) {
+      toast.error("Organization number must be 10 digits (XXXXXX-XXXX)");
+      return;
+    }
 
     onSubmit({
       type,
@@ -66,9 +106,9 @@ function CustomerForm({
       email: email.trim() || undefined,
       phone: phone.trim() || undefined,
       address: address.trim(),
-      postalCode: postalCode.trim(),
+      postalCode: formatPostalCode(postalCode),
       city: city.trim(),
-      country: country.trim(),
+      country: "Sweden",
     });
   };
 
@@ -86,17 +126,12 @@ function CustomerForm({
       </div>
       <div className="space-y-2">
         <Label htmlFor="name">Name *</Label>
-        <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder={type === "company" ? "Company Name AB" : "John Doe"} required />
+        <Input id="name" value={name} onChange={(e) => setName(filterName(e.target.value))} placeholder={type === "company" ? "Company Name AB" : "John Doe"} required />
       </div>
       {type === "company" && (
         <div className="space-y-2">
-          <Label htmlFor="orgNum">Organization Number</Label>
-          <Input id="orgNum" value={organizationNumber} onChange={(e) => {
-            const value = e.target.value.replace(/\D/g, "");
-            if (value.length <= 10) {
-              setOrganizationNumber(value.length > 6 ? value.slice(0, 6) + "-" + value.slice(6) : value);
-            }
-          }} placeholder="XXXXXX-XXXX" maxLength={11} />
+          <Label htmlFor="orgNum">Organization Number *</Label>
+          <Input id="orgNum" value={organizationNumber} onChange={(e) => setOrganizationNumber(formatOrgNumber(e.target.value))} placeholder="XXXXXX-XXXX" maxLength={11} />
         </div>
       )}
       <div className="grid grid-cols-2 gap-4">
@@ -106,7 +141,7 @@ function CustomerForm({
         </div>
         <div className="space-y-2">
           <Label htmlFor="phone">Phone</Label>
-          <Input id="phone" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+46 70 123 45 67" />
+          <Input id="phone" value={phone} onChange={(e) => setPhone(filterPhone(e.target.value))} placeholder="+46 70 123 45 67" />
         </div>
       </div>
       <div className="space-y-2">
@@ -116,15 +151,15 @@ function CustomerForm({
       <div className="grid grid-cols-3 gap-4">
         <div className="space-y-2">
           <Label htmlFor="postalCode">Postal Code *</Label>
-          <Input id="postalCode" value={postalCode} onChange={(e) => setPostalCode(e.target.value)} placeholder="123 45" required />
+          <Input id="postalCode" value={postalCode} onChange={(e) => setPostalCode(formatPostalCode(e.target.value))} placeholder="XXX XX" maxLength={6} required />
         </div>
         <div className="space-y-2">
           <Label htmlFor="city">City *</Label>
-          <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} placeholder="Stockholm" required />
+          <Input id="city" value={city} onChange={(e) => setCity(filterCity(e.target.value))} placeholder="Stockholm" required />
         </div>
         <div className="space-y-2">
           <Label htmlFor="country">Country</Label>
-          <Input id="country" value={country} onChange={(e) => setCountry(e.target.value)} placeholder="Sweden" />
+          <Input id="country" value="Sweden" disabled className="bg-muted" />
         </div>
       </div>
       <div className="flex gap-3 pt-4">
@@ -246,19 +281,109 @@ function ProductForm({
 }
 
 // Invoice Detail View (inline)
-function InvoiceDetailView({ invoice, onClose }: { invoice: Invoice; onClose: () => void }) {
+function InvoiceDetailView({ 
+  invoice, 
+  onClose, 
+  onDelete, 
+  onEdit,
+  onStatusChange,
+  onConvertQuote,
+}: { 
+  invoice: Invoice; 
+  onClose: () => void; 
+  onDelete: (id: string) => void;
+  onEdit: (invoice: Invoice) => void;
+  onStatusChange: (id: string, status: Invoice["status"]) => void;
+  onConvertQuote: (quoteId: string) => void;
+}) {
+  const { activeCompany } = useAuth();
+  const navigate = useNavigate();
+  const isQuote = invoice.documentType === "quote";
+  const docLabel = isQuote ? "Quote" : "Invoice";
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showSendDialog, setShowSendDialog] = useState(false);
+  const [showPaidConfirm, setShowPaidConfirm] = useState(false);
+
+  const handleSendManually = () => {
+    exportInvoicePDF(invoice, activeCompany ? {
+      companyName: activeCompany.companyName,
+      organizationNumber: activeCompany.organizationNumber,
+    } : undefined);
+    onStatusChange(invoice.id, "sent");
+    toast.success(`${docLabel} downloaded as PDF and marked as sent`);
+    setShowSendDialog(false);
+  };
+
+  const handleSendAutomatically = () => {
+    onStatusChange(invoice.id, "sent");
+    toast.success(`${docLabel} marked as sent`);
+    setShowSendDialog(false);
+  };
+
+  const handleMarkPaid = (createVoucher: boolean) => {
+    onStatusChange(invoice.id, "paid");
+    setShowPaidConfirm(false);
+    toast.success("Invoice marked as paid");
+    if (createVoucher) {
+      const bookingAccount = activeCompany?.invoiceBookingAccount || "1930";
+      navigate("/economy/accounting", {
+        state: {
+          openCreateVoucher: true,
+          prefillVoucher: {
+            description: `Invoice #${invoice.invoiceNumber} - ${invoice.customerName}`,
+            lines: [
+              { accountNumber: bookingAccount, accountName: "", debit: invoice.total, credit: 0 },
+              { accountNumber: "", accountName: "", debit: 0, credit: invoice.total },
+            ],
+          },
+        },
+      });
+    }
+  };
+
   return (
     <div className="bg-card rounded-xl border border-border p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-foreground">Invoice #{invoice.invoiceNumber}</h2>
-          <p className="text-sm text-muted-foreground">
-            {invoice.customerName}
-          </p>
+          <h2 className="text-xl font-semibold text-foreground">{docLabel} #{invoice.invoiceNumber}</h2>
+          <p className="text-sm text-muted-foreground">{invoice.customerName}</p>
         </div>
-        <Button variant="ghost" size="icon" onClick={onClose}>
-          <X className="h-5 w-5" />
-        </Button>
+        <div className="flex items-center gap-2">
+          {isQuote && invoice.status !== "accepted" && (
+            <Button variant="default" size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => onConvertQuote(invoice.id)}>
+              <CheckCircle className="h-4 w-4 mr-1" />Quote Accepted
+            </Button>
+          )}
+          {!isQuote && invoice.status === "sent" && (
+            <Button variant="default" size="sm" className="bg-green-600 hover:bg-green-700" onClick={() => setShowPaidConfirm(true)}>
+              <DollarSign className="h-4 w-4 mr-1" />Paid
+            </Button>
+          )}
+          <Button variant="outline" size="sm" onClick={() => onEdit(invoice)}>
+            <Edit className="h-4 w-4 mr-1" />Edit
+          </Button>
+          {invoice.status === "sent" || invoice.status === "paid" ? (
+            <Button size="sm" onClick={() => {
+              exportInvoicePDF(invoice, activeCompany ? {
+                companyName: activeCompany.companyName,
+                organizationNumber: activeCompany.organizationNumber,
+              } : undefined);
+              toast.success("PDF saved");
+            }}>
+              <Download className="h-4 w-4 mr-1" />Save
+            </Button>
+          ) : (
+            <Button size="sm" onClick={() => setShowSendDialog(true)}>
+              <Send className="h-4 w-4 mr-1" />Send
+            </Button>
+          )}
+          <Button variant="destructive" size="sm" onClick={() => setShowDeleteConfirm(true)}>
+            <Trash2 className="h-4 w-4 mr-1" />Delete
+          </Button>
+          <Button variant="ghost" size="icon" onClick={onClose}>
+            <X className="h-5 w-5" />
+          </Button>
+        </div>
       </div>
 
       <div className="grid md:grid-cols-2 gap-4 p-4 bg-muted/30 rounded-lg">
@@ -267,7 +392,7 @@ function InvoiceDetailView({ invoice, onClose }: { invoice: Invoice; onClose: ()
           <p className="font-medium">{invoice.issueDate}</p>
         </div>
         <div>
-          <p className="text-sm text-muted-foreground">Due Date</p>
+          <p className="text-sm text-muted-foreground">{isQuote ? "Valid Until" : "Due Date"}</p>
           <p className="font-medium">{invoice.dueDate}</p>
         </div>
         <div>
@@ -278,7 +403,9 @@ function InvoiceDetailView({ invoice, onClose }: { invoice: Invoice; onClose: ()
           <p className="text-sm text-muted-foreground">Status</p>
           <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
             invoice.status === "paid" ? "bg-success/10 text-success" :
+            invoice.status === "accepted" ? "bg-success/10 text-success" :
             invoice.status === "overdue" ? "bg-destructive/10 text-destructive" :
+            invoice.status === "declined" ? "bg-destructive/10 text-destructive" :
             invoice.status === "sent" ? "bg-secondary/10 text-secondary" :
             "bg-muted text-muted-foreground"
           }`}>
@@ -329,20 +456,104 @@ function InvoiceDetailView({ invoice, onClose }: { invoice: Invoice; onClose: ()
           </tfoot>
         </table>
       </div>
+
+      {/* Delete Confirmation */}
+      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {docLabel}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete {docLabel.toLowerCase()} #{invoice.invoiceNumber}. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { onDelete(invoice.id); onClose(); }}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Paid Confirmation - Create Voucher? */}
+      <AlertDialog open={showPaidConfirm} onOpenChange={setShowPaidConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Invoice Paid</AlertDialogTitle>
+            <AlertDialogDescription>
+              Do you want to create a voucher for this invoice?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => handleMarkPaid(false)}>No</AlertDialogCancel>
+            <AlertDialogAction onClick={() => handleMarkPaid(true)}>Yes, Create Voucher</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Send Dialog */}
+      <AlertDialog open={showSendDialog} onOpenChange={setShowSendDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Send {docLabel}</AlertDialogTitle>
+            <AlertDialogDescription>
+              Choose how to send this {docLabel.toLowerCase()}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <div className="space-y-3">
+            <Button variant="outline" className="w-full justify-start gap-3 h-auto py-3" onClick={handleSendManually}>
+              <Download className="h-5 w-5 shrink-0" />
+              <div className="text-left">
+                <p className="font-medium">Send Manually</p>
+                <p className="text-xs text-muted-foreground">Download as PDF and send it yourself</p>
+              </div>
+            </Button>
+            <Button variant="outline" className="w-full justify-start gap-3 h-auto py-3 opacity-50 cursor-not-allowed" disabled>
+              <Mail className="h-5 w-5 shrink-0" />
+              <div className="text-left">
+                <p className="font-medium">Send Automatically via Email</p>
+                <p className="text-xs text-muted-foreground">Coming Soon</p>
+              </div>
+            </Button>
+          </div>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
 
 export default function BillingPage() {
   const { user } = useAuth();
-  const { customers, products, invoices, addCustomer, updateCustomer, deleteCustomer, addProduct, updateProduct, deleteProduct } = useBilling();
+  const { customers, products, invoices, addCustomer, updateCustomer, deleteCustomer, addProduct, updateProduct, deleteProduct, deleteInvoice, updateInvoiceStatus, convertQuoteToInvoice } = useBilling();
+  const location = useLocation();
   
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [productDialogOpen, setProductDialogOpen] = useState(false);
   const [showCreateInvoice, setShowCreateInvoice] = useState(false);
+  const [showCreateQuote, setShowCreateQuote] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [editingCustomer, setEditingCustomer] = useState<Customer | undefined>();
   const [editingProduct, setEditingProduct] = useState<Product | undefined>();
+
+  // Compute display status: only sent invoices can become overdue
+  const getDisplayStatus = (inv: Invoice) => {
+    if (inv.status === "sent" && inv.dueDate) {
+      const today = new Date().toISOString().split("T")[0];
+      if (inv.dueDate < today) return "overdue";
+    }
+    // Draft invoices never become overdue even if past due date
+    return inv.status;
+  };
+
+  const actualInvoices = invoices.filter(i => (i.documentType || "invoice") === "invoice");
+  const quotes = invoices.filter(i => i.documentType === "quote");
+
+  useEffect(() => {
+    if ((location.state as any)?.openCreateInvoice) {
+      setShowCreateInvoice(true);
+    }
+  }, [location.state]);
 
   const handleAddCustomer = (data: Omit<Customer, "id" | "companyId" | "createdAt">) => {
     if (editingCustomer) {
@@ -380,16 +591,14 @@ export default function BillingPage() {
 
   if (!user) {
     return (
-      <div className="space-y-12 animate-fade-in">
-        <div className="space-y-4">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-lg bg-secondary/10 flex items-center justify-center">
-              <FileText className="h-6 w-6 text-secondary" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-foreground">Billing</h1>
-              <p className="text-muted-foreground">Invoice management and payment tracking</p>
-            </div>
+      <div className="space-y-6 animate-fade-in">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-lg bg-secondary/10 flex items-center justify-center">
+            <FileText className="h-5 w-5 text-secondary" />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-foreground">Billing</h1>
+            <p className="text-sm text-muted-foreground">Invoice management and payment tracking</p>
           </div>
         </div>
         <section className="bg-primary/5 rounded-xl p-8 border border-primary/10">
@@ -409,21 +618,28 @@ export default function BillingPage() {
   }
 
   return (
-    <div className="space-y-8 animate-fade-in">
+    <div className="space-y-4 animate-fade-in">
       {/* Header */}
       <div className="flex items-center gap-3">
-        <div className="w-12 h-12 rounded-lg bg-secondary/10 flex items-center justify-center">
-          <FileText className="h-6 w-6 text-secondary" />
+        <div className="w-10 h-10 rounded-lg bg-secondary/10 flex items-center justify-center">
+          <FileText className="h-5 w-5 text-secondary" />
         </div>
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Billing</h1>
-          <p className="text-muted-foreground">Manage customers, products, and invoices</p>
+          <h1 className="text-xl font-bold text-foreground">Billing</h1>
         </div>
       </div>
 
       {/* Tabs */}
-      <Tabs defaultValue="customers" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+      <Tabs defaultValue="invoices" className="w-full">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="invoices" className="gap-2">
+            <Receipt className="h-4 w-4" />
+            Invoices ({actualInvoices.length})
+          </TabsTrigger>
+          <TabsTrigger value="quotes" className="gap-2">
+            <Send className="h-4 w-4" />
+            Quotes ({quotes.length})
+          </TabsTrigger>
           <TabsTrigger value="customers" className="gap-2">
             <Users className="h-4 w-4" />
             Customers ({customers.length})
@@ -431,10 +647,6 @@ export default function BillingPage() {
           <TabsTrigger value="products" className="gap-2">
             <Package className="h-4 w-4" />
             Products ({products.length})
-          </TabsTrigger>
-          <TabsTrigger value="invoices" className="gap-2">
-            <Receipt className="h-4 w-4" />
-            Invoices ({invoices.length})
           </TabsTrigger>
         </TabsList>
 
@@ -449,7 +661,7 @@ export default function BillingPage() {
               <DialogTrigger asChild>
                 <Button><Plus className="h-4 w-4 mr-2" />Add Customer</Button>
               </DialogTrigger>
-              <DialogContent className="max-w-lg">
+              <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>{editingCustomer ? "Edit Customer" : "Add Customer"}</DialogTitle>
                 </DialogHeader>
@@ -531,16 +743,16 @@ export default function BillingPage() {
               </CardContent>
             </Card>
           ) : (
-            <div className="bg-card rounded-xl border border-border overflow-hidden">
-              <table className="w-full">
+            <div className="bg-card rounded-lg border border-border overflow-hidden">
+              <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-border bg-muted/30">
-                    <th className="text-left py-3 px-4 font-semibold">Name</th>
-                    <th className="text-left py-3 px-4 font-semibold">Unit</th>
-                    <th className="text-right py-3 px-4 font-semibold">Price excl. VAT</th>
-                    <th className="text-right py-3 px-4 font-semibold">VAT</th>
-                    <th className="text-right py-3 px-4 font-semibold">Price incl. VAT</th>
-                    <th className="text-right py-3 px-4 font-semibold w-24">Actions</th>
+                    <th className="text-left py-2 px-3 font-medium">Name</th>
+                    <th className="text-left py-2 px-3 font-medium">Unit</th>
+                    <th className="text-right py-2 px-3 font-medium">Price excl. VAT</th>
+                    <th className="text-right py-2 px-3 font-medium">VAT</th>
+                    <th className="text-right py-2 px-3 font-medium">Price incl. VAT</th>
+                    <th className="text-right py-2 px-3 font-medium w-20">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -548,23 +760,21 @@ export default function BillingPage() {
                     const calc = calculateProductPrice(product.price, product.includesVat, product.vatRate);
                     return (
                       <tr key={product.id} className="border-b border-border/50">
-                        <td className="py-3 px-4">
-                          <div>
-                            <p className="font-medium">{product.name}</p>
-                            {product.description && <p className="text-sm text-muted-foreground">{product.description}</p>}
-                          </div>
+                        <td className="py-2 px-3">
+                          <p className="font-medium text-foreground">{product.name}</p>
+                          {product.description && <p className="text-[10px] text-muted-foreground">{product.description}</p>}
                         </td>
-                        <td className="py-3 px-4 text-muted-foreground">{product.unit || "-"}</td>
-                        <td className="py-3 px-4 text-right font-mono">{formatAmount(calc.priceExclVat)}</td>
-                        <td className="py-3 px-4 text-right text-muted-foreground">{product.vatRate}%</td>
-                        <td className="py-3 px-4 text-right font-mono font-semibold">{formatAmount(calc.priceInclVat)}</td>
-                        <td className="py-3 px-4 text-right">
+                        <td className="py-2 px-3 text-muted-foreground">{product.unit || "-"}</td>
+                        <td className="py-2 px-3 text-right font-mono">{formatAmount(calc.priceExclVat)}</td>
+                        <td className="py-2 px-3 text-right text-muted-foreground">{product.vatRate}%</td>
+                        <td className="py-2 px-3 text-right font-mono font-medium">{formatAmount(calc.priceInclVat)}</td>
+                        <td className="py-2 px-3 text-right">
                           <div className="flex justify-end gap-1">
-                            <Button variant="ghost" size="icon" onClick={() => { setEditingProduct(product); setProductDialogOpen(true); }}>
-                              <Edit className="h-4 w-4" />
+                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { setEditingProduct(product); setProductDialogOpen(true); }}>
+                              <Edit className="h-3 w-3" />
                             </Button>
-                            <Button variant="ghost" size="icon" onClick={() => handleDeleteProduct(product.id)}>
-                              <Trash2 className="h-4 w-4 text-destructive" />
+                            <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => handleDeleteProduct(product.id)}>
+                              <Trash2 className="h-3 w-3 text-destructive" />
                             </Button>
                           </div>
                         </td>
@@ -579,24 +789,27 @@ export default function BillingPage() {
 
         {/* Invoices Tab */}
         <TabsContent value="invoices" className="space-y-4">
-          {/* Inline Create Invoice Form */}
           {showCreateInvoice && (
             <CreateInvoiceDialog
               open={showCreateInvoice}
               onOpenChange={setShowCreateInvoice}
               inline
+              documentType="invoice"
+              onInvoiceCreated={(inv) => setSelectedInvoice(inv)}
             />
           )}
 
-          {/* Invoice Detail View */}
-          {selectedInvoice && !showCreateInvoice && (
+          {selectedInvoice && !showCreateInvoice && (selectedInvoice.documentType || "invoice") === "invoice" && (
             <InvoiceDetailView
               invoice={selectedInvoice}
               onClose={() => setSelectedInvoice(null)}
+              onDelete={(id) => { deleteInvoice(id); toast.success("Invoice deleted"); }}
+              onEdit={() => toast.info("Edit functionality coming soon")}
+              onStatusChange={(id, status) => { updateInvoiceStatus(id, status); setSelectedInvoice(prev => prev ? { ...prev, status } : null); }}
+              onConvertQuote={(id) => { const inv = convertQuoteToInvoice(id); if (inv) { setSelectedInvoice(inv); toast.success("Quote converted to invoice"); } }}
             />
           )}
 
-          {/* Invoice List */}
           {!showCreateInvoice && !selectedInvoice && (
             <>
               <div className="flex justify-between items-center">
@@ -607,59 +820,135 @@ export default function BillingPage() {
                 </Button>
               </div>
 
-              {invoices.length === 0 ? (
+              {actualInvoices.length === 0 ? (
                 <Card>
                   <CardContent className="py-12 text-center text-muted-foreground">
                     No invoices yet. Create your first invoice to get started.
                   </CardContent>
                 </Card>
               ) : (
-                <div className="bg-card rounded-xl border border-border overflow-hidden">
-                  <table className="w-full">
+                <div className="bg-card rounded-lg border border-border overflow-hidden">
+                  <table className="w-full text-xs">
                     <thead>
-                      <tr className="border-b border-border bg-muted/30">
-                        <th className="text-left py-3 px-4 font-semibold">Invoice #</th>
-                        <th className="text-left py-3 px-4 font-semibold">Customer</th>
-                        <th className="text-left py-3 px-4 font-semibold">Date</th>
-                        <th className="text-left py-3 px-4 font-semibold">Due Date</th>
-                        <th className="text-right py-3 px-4 font-semibold">Total</th>
-                        <th className="text-left py-3 px-4 font-semibold">Status</th>
-                        <th className="text-center py-3 px-4 font-semibold">Actions</th>
+                     <tr className="border-b border-border bg-muted/30">
+                        <th className="text-left py-2 px-3 font-medium">Invoice #</th>
+                        <th className="text-left py-2 px-3 font-medium">Customer</th>
+                        <th className="text-left py-2 px-3 font-medium">Issue Date</th>
+                        <th className="text-right py-2 px-3 font-medium">Total</th>
+                        <th className="text-right py-2 px-3 font-medium">Status</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {invoices.map((invoice) => (
+                      {actualInvoices.map((invoice) => (
                         <tr
                           key={invoice.id}
                           className="border-b border-border/50 hover:bg-muted/20 cursor-pointer transition-colors"
                           onClick={() => setSelectedInvoice(invoice)}
                         >
-                          <td className="py-3 px-4 font-mono">#{invoice.invoiceNumber}</td>
-                          <td className="py-3 px-4">{invoice.customerName}</td>
-                          <td className="py-3 px-4">{invoice.issueDate}</td>
-                          <td className="py-3 px-4">{invoice.dueDate}</td>
-                          <td className="py-3 px-4 text-right font-mono font-semibold">
+                          <td className="py-2 px-3 font-mono text-secondary">#{invoice.invoiceNumber}</td>
+                          <td className="py-2 px-3 text-foreground">{invoice.customerName}</td>
+                          <td className="py-2 px-3 text-muted-foreground">{invoice.issueDate}</td>
+                          <td className="py-2 px-3 text-right font-mono font-medium">
                             {formatAmount(invoice.total)} SEK
                           </td>
-                          <td className="py-3 px-4">
-                            <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                              invoice.status === "paid" ? "bg-success/10 text-success" :
-                              invoice.status === "overdue" ? "bg-destructive/10 text-destructive" :
-                              invoice.status === "sent" ? "bg-secondary/10 text-secondary" :
+                          <td className="py-2 px-3 text-right">
+                            {(() => {
+                              const displayStatus = getDisplayStatus(invoice);
+                              return (
+                                <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
+                                  displayStatus === "paid" ? "bg-green-500/10 text-green-600" :
+                                  displayStatus === "overdue" ? "bg-destructive/10 text-destructive" :
+                                  displayStatus === "sent" ? "bg-blue-500/10 text-blue-600" :
+                                  "bg-muted text-muted-foreground"
+                                }`}>
+                                  {displayStatus.charAt(0).toUpperCase() + displayStatus.slice(1)}
+                                </span>
+                              );
+                            })()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          )}
+        </TabsContent>
+
+        {/* Quotes Tab */}
+        <TabsContent value="quotes" className="space-y-4">
+          {showCreateQuote && (
+            <CreateInvoiceDialog
+              open={showCreateQuote}
+              onOpenChange={setShowCreateQuote}
+              inline
+              documentType="quote"
+              onInvoiceCreated={(inv) => setSelectedInvoice(inv)}
+            />
+          )}
+
+          {selectedInvoice && !showCreateQuote && selectedInvoice.documentType === "quote" && (
+            <InvoiceDetailView
+              invoice={selectedInvoice}
+              onClose={() => setSelectedInvoice(null)}
+              onDelete={(id) => { deleteInvoice(id); toast.success("Quote deleted"); }}
+              onEdit={() => toast.info("Edit functionality coming soon")}
+              onStatusChange={(id, status) => { updateInvoiceStatus(id, status); setSelectedInvoice(prev => prev ? { ...prev, status } : null); }}
+              onConvertQuote={(id) => { const inv = convertQuoteToInvoice(id); if (inv) { setSelectedInvoice(inv); toast.success("Quote accepted and converted to invoice"); } }}
+            />
+          )}
+
+          {!showCreateQuote && !(selectedInvoice?.documentType === "quote") && (
+            <>
+              <div className="flex justify-between items-center">
+                <h2 className="text-xl font-semibold">Quotes</h2>
+                <Button onClick={() => setShowCreateQuote(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Quote
+                </Button>
+              </div>
+
+              {quotes.length === 0 ? (
+                <Card>
+                  <CardContent className="py-12 text-center text-muted-foreground">
+                    No quotes yet. Create your first quote to get started.
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="bg-card rounded-lg border border-border overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-border bg-muted/30">
+                        <th className="text-left py-2 px-3 font-medium">Quote #</th>
+                        <th className="text-left py-2 px-3 font-medium">Customer</th>
+                        <th className="text-left py-2 px-3 font-medium">Issue Date</th>
+                        <th className="text-right py-2 px-3 font-medium">Total</th>
+                        <th className="text-right py-2 px-3 font-medium">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {quotes.map((quote) => (
+                        <tr
+                          key={quote.id}
+                          className="border-b border-border/50 hover:bg-muted/20 cursor-pointer transition-colors"
+                          onClick={() => setSelectedInvoice(quote)}
+                        >
+                          <td className="py-2 px-3 font-mono text-secondary">#{quote.invoiceNumber}</td>
+                          <td className="py-2 px-3 text-foreground">{quote.customerName}</td>
+                          <td className="py-2 px-3 text-muted-foreground">{quote.issueDate}</td>
+                          <td className="py-2 px-3 text-right font-mono font-medium">
+                            {formatAmount(quote.total)} SEK
+                          </td>
+                          <td className="py-2 px-3 text-right">
+                            <span className={`inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium ${
+                              quote.status === "accepted" ? "bg-green-500/10 text-green-600" :
+                              quote.status === "declined" ? "bg-destructive/10 text-destructive" :
+                              quote.status === "sent" ? "bg-blue-500/10 text-blue-600" :
                               "bg-muted text-muted-foreground"
                             }`}>
-                              {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
+                              {quote.status.charAt(0).toUpperCase() + quote.status.slice(1)}
                             </span>
-                          </td>
-                          <td className="py-3 px-4 text-center">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={(e) => { e.stopPropagation(); setSelectedInvoice(invoice); }}
-                            >
-                              <Eye className="h-4 w-4 mr-1" />
-                              View
-                            </Button>
                           </td>
                         </tr>
                       ))}

@@ -1,0 +1,261 @@
+import { useState } from "react";
+import { Receipt as ReceiptIcon, Trash2, Link2, Link2Off, Image, FileText, ExternalLink, Search, Check, ChevronsUpDown } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useReceipts } from "@/contexts/ReceiptsContext";
+import { useAccounting } from "@/contexts/AccountingContext";
+import { useAuth } from "@/contexts/AuthContext";
+import { toast } from "sonner";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Lock } from "lucide-react";
+import { Link } from "react-router-dom";
+import { cn } from "@/lib/utils";
+
+export default function ReceiptsPage() {
+  const { user } = useAuth();
+  const { receipts, removeReceipt, linkReceipt, unlinkReceipt } = useReceipts();
+  const { vouchers } = useAccounting();
+  const [searchQuery, setSearchQuery] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
+  const [relinkDialog, setRelinkDialog] = useState<string | null>(null);
+  const [selectedVoucherId, setSelectedVoucherId] = useState("");
+  const [voucherPickerOpen, setVoucherPickerOpen] = useState(false);
+
+  if (!user) {
+    return (
+      <div className="space-y-12 animate-fade-in">
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-lg bg-secondary/10 flex items-center justify-center">
+              <ReceiptIcon className="h-6 w-6 text-secondary" />
+            </div>
+            <div>
+              <h1 className="text-3xl font-bold text-foreground">Receipts</h1>
+              <p className="text-muted-foreground">Manage uploaded receipts</p>
+            </div>
+          </div>
+        </div>
+        <section className="bg-primary/5 rounded-xl p-8 border border-primary/10">
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
+              <Lock className="h-6 w-6 text-primary" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-foreground mb-2">View Receipts</h3>
+              <p className="text-muted-foreground mb-4">Sign in to manage your receipts.</p>
+              <Button asChild><Link to="/login">Sign In</Link></Button>
+            </div>
+          </div>
+        </section>
+      </div>
+    );
+  }
+
+  const filteredReceipts = receipts.filter(r => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase();
+    return r.name.toLowerCase().includes(q) || (r.voucherNumber?.toString().includes(q));
+  });
+
+  const openAttachment = (dataUrl: string) => {
+    const w = window.open();
+    if (w) {
+      if (dataUrl.startsWith("data:application/pdf")) {
+        w.document.write(`<iframe src="${dataUrl}" style="width:100%;height:100%;border:none;"></iframe>`);
+      } else {
+        w.document.write(`<img src="${dataUrl}" style="max-width:100%;height:auto;" />`);
+      }
+    }
+  };
+
+  const handleDelete = (id: string) => {
+    removeReceipt(id);
+    setDeleteConfirm(null);
+    toast.success("Receipt deleted");
+  };
+
+  const handleRelink = () => {
+    if (!relinkDialog || !selectedVoucherId) return;
+    const v = vouchers.find(v => v.id === selectedVoucherId);
+    if (v) {
+      linkReceipt(relinkDialog, v.id, v.voucherNumber);
+      toast.success(`Receipt linked to voucher #${v.voucherNumber}`);
+    }
+    setRelinkDialog(null);
+    setSelectedVoucherId("");
+  };
+
+  return (
+    <div className="space-y-4 animate-fade-in">
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-lg bg-secondary/10 flex items-center justify-center">
+          <ReceiptIcon className="h-5 w-5 text-secondary" />
+        </div>
+        <div>
+          <h1 className="text-xl font-bold text-foreground">Receipts</h1>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-4">
+        <h2 className="text-base font-semibold text-foreground">
+          All Receipts ({filteredReceipts.length})
+        </h2>
+        <div className="relative w-64">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            type="text"
+            placeholder="Search receipts..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-9"
+          />
+        </div>
+      </div>
+
+      {filteredReceipts.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            No receipts found.
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-3">
+          {filteredReceipts.map((receipt) => (
+            <Card key={receipt.id}>
+              <CardContent className="py-4 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  {receipt.type.startsWith("image/") ? (
+                    <Image className="h-5 w-5 text-muted-foreground" />
+                  ) : (
+                    <FileText className="h-5 w-5 text-muted-foreground" />
+                  )}
+                  <div>
+                    <p className="font-medium text-sm">{receipt.name}</p>
+                    {receipt.voucherId ? (
+                      <p className="text-xs text-muted-foreground">
+                        Connected to voucher #{receipt.voucherNumber}
+                      </p>
+                    ) : (
+                      <p className="text-xs text-destructive">Not connected to voucher</p>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button variant="ghost" size="sm" onClick={() => openAttachment(receipt.dataUrl)}>
+                    <ExternalLink className="h-4 w-4 mr-1" />
+                    View
+                  </Button>
+                  {receipt.voucherId ? (
+                    <Button variant="ghost" size="sm" onClick={() => unlinkReceipt(receipt.id)}>
+                      <Link2Off className="h-4 w-4 mr-1" />
+                      Unlink
+                    </Button>
+                  ) : (
+                    <Button variant="ghost" size="sm" onClick={() => { setRelinkDialog(receipt.id); setSelectedVoucherId(""); }}>
+                      <Link2 className="h-4 w-4 mr-1" />
+                      Link
+                    </Button>
+                  )}
+                  <Button variant="ghost" size="sm" className="text-destructive" onClick={() => setDeleteConfirm(receipt.id)}>
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Delete confirmation */}
+      <AlertDialog open={!!deleteConfirm} onOpenChange={() => setDeleteConfirm(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete receipt?</AlertDialogTitle>
+            <AlertDialogDescription>This will permanently delete this receipt.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={() => deleteConfirm && handleDelete(deleteConfirm)}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Relink dialog */}
+      <Dialog open={!!relinkDialog} onOpenChange={() => setRelinkDialog(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Link receipt to voucher</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <Popover open={voucherPickerOpen} onOpenChange={setVoucherPickerOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" role="combobox" aria-expanded={voucherPickerOpen} className="w-full justify-between">
+                  {selectedVoucherId
+                    ? (() => { const v = vouchers.find(v => v.id === selectedVoucherId); return v ? `#${v.voucherNumber} — ${v.description}` : "Select a voucher..."; })()
+                    : "Select a voucher..."}
+                  <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                <Command>
+                  <CommandInput placeholder="Search by number or name..." />
+                  <CommandList>
+                    <CommandEmpty>No voucher found.</CommandEmpty>
+                    <CommandGroup>
+                      {vouchers.map(v => (
+                        <CommandItem
+                          key={v.id}
+                          value={`${v.voucherNumber} ${v.description}`}
+                          onSelect={() => {
+                            setSelectedVoucherId(v.id);
+                            setVoucherPickerOpen(false);
+                          }}
+                        >
+                          <Check className={cn("mr-2 h-4 w-4", selectedVoucherId === v.id ? "opacity-100" : "opacity-0")} />
+                          #{v.voucherNumber} — {v.description}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setRelinkDialog(null)}>Cancel</Button>
+              <Button onClick={handleRelink} disabled={!selectedVoucherId}>Link</Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

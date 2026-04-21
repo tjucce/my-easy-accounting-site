@@ -9,69 +9,57 @@ import {
   FileCheck,
   BarChart3,
   Wallet,
+  ListChecks,
   ArrowRight,
+  LogIn,
   TrendingUp,
   TrendingDown,
-  LogIn,
 } from "lucide-react";
 import {
   ChartContainer,
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
-import { Area, AreaChart, XAxis, YAxis, ReferenceLine, ResponsiveContainer } from "recharts";
+import { Area, AreaChart, XAxis, YAxis, ReferenceLine } from "recharts";
 import { useAccounting } from "@/contexts/AccountingContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { format, subMonths, startOfMonth, endOfMonth } from "date-fns";
+import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
 
 const economyModules = [
   {
+    icon: ListChecks,
+    name: "Checklist",
+    href: "/economy/checklist",
+  },
+  {
     icon: BookOpen,
     name: "Accounting",
-    description:
-      "Core double-entry bookkeeping with full Swedish BAS compliance. Create balanced vouchers, manage accounts, and maintain accurate records.",
     href: "/economy/accounting",
-    features: ["Voucher management", "BAS chart of accounts", "Balance validation"],
   },
   {
     icon: FileText,
     name: "Billing",
-    description:
-      "Create, send, and track invoices. Manage customer payments and maintain a clear overview of receivables.",
     href: "/economy/billing",
-    features: ["Invoice creation", "Payment tracking", "Customer management"],
   },
   {
     icon: Users,
     name: "Salary",
-    description:
-      "Handle payroll processing, employee records, and salary-related bookkeeping entries.",
     href: "/economy/salary",
-    features: ["Payroll processing", "Employee records", "Tax calculations"],
   },
   {
     icon: FileCheck,
     name: "Declaration",
-    description:
-      "Prepare and submit tax declarations with confidence. Generate required reports and ensure compliance.",
     href: "/economy/declaration",
-    features: ["VAT declarations", "Tax reporting", "Compliance checks"],
   },
   {
     icon: BarChart3,
     name: "Annual Reports",
-    description:
-      "Generate income statements, balance sheets, and complete annual reports for statutory compliance.",
     href: "/economy/annual-reports",
-    features: ["Income statements", "Balance sheets", "Year-end closing"],
   },
   {
     icon: Wallet,
     name: "Accounts",
-    description:
-      "Manage your chart of accounts. View, add, and configure bookkeeping accounts based on the BAS standard.",
     href: "/economy/accounts",
-    features: ["Account listing", "BAS compliance", "Account configuration"],
   },
 ];
 
@@ -91,12 +79,15 @@ export default function EconomyIndex() {
     window.scrollTo({ top: 0, behavior: 'instant' });
   }, []);
 
+  const currentYear = new Date().getFullYear();
+
   const monthlyData = useMemo(() => {
     const data = [];
     const now = new Date();
+    const currentMonth = now.getMonth(); // 0-11
     
-    for (let i = 11; i >= 0; i--) {
-      const monthDate = subMonths(now, i);
+    for (let i = 0; i <= currentMonth; i++) {
+      const monthDate = new Date(currentYear, i, 1);
       const monthStart = format(startOfMonth(monthDate), "yyyy-MM-dd");
       const monthEnd = format(endOfMonth(monthDate), "yyyy-MM-dd");
       
@@ -110,25 +101,35 @@ export default function EconomyIndex() {
     }
     
     return data;
-  }, [getIncomeStatement]);
+  }, [getIncomeStatement, currentYear]);
 
-  const currentMonthResult = monthlyData[monthlyData.length - 1]?.netResult || 0;
   const hasData = monthlyData.some(d => d.netResult !== 0);
-  
-  // Calculate 12-month rolling total
-  const twelveMonthTotal = useMemo(() => {
-    return monthlyData.reduce((sum, month) => sum + month.netResult, 0);
-  }, [monthlyData]);
+
+  // Year-to-date totals
+  const yearTotals = useMemo(() => {
+    const yearStart = `${currentYear}-01-01`;
+    const yearEnd = format(endOfMonth(new Date()), "yyyy-MM-dd");
+    const { revenues, expenses, netResult } = getIncomeStatement(yearStart, yearEnd);
+    const totalRevenue = revenues.reduce((sum, r) => sum + Math.abs(r.balance), 0);
+    const totalExpenses = expenses.reduce((sum, e) => sum + Math.abs(e.balance), 0);
+    return { totalRevenue, totalExpenses, netResult };
+  }, [getIncomeStatement, currentYear]);
+
+  // Rolling 12-month net result
+  const rolling12 = useMemo(() => {
+    const now = new Date();
+    const start = format(startOfMonth(subMonths(now, 11)), "yyyy-MM-dd");
+    const end = format(endOfMonth(now), "yyyy-MM-dd");
+    const { netResult } = getIncomeStatement(start, end);
+    return netResult;
+  }, [getIncomeStatement]);
 
   // Not logged in - show informational overview
   if (!user) {
     return (
       <div className="space-y-8 animate-fade-in">
-        <div className="space-y-2">
-          <h1 className="text-3xl font-bold text-foreground">Economy Overview</h1>
-          <p className="text-lg text-muted-foreground">
-            A complete suite of tools for Swedish business accounting. Explore what each module offers below.
-          </p>
+        <div className="space-y-1">
+          <h1 className="text-xl font-bold text-foreground">Economy Overview</h1>
         </div>
 
         {/* Call to action for login */}
@@ -164,26 +165,17 @@ export default function EconomyIndex() {
                     <Icon className="h-6 w-6 text-secondary" />
                   </div>
                 </div>
-                
-                <h3 className="text-xl font-semibold text-foreground mb-2">
+
+                <h3 className="text-base font-semibold text-foreground mb-6">
                   {module.name}
                 </h3>
-                
-                <p className="text-muted-foreground text-sm mb-4">
-                  {module.description}
-                </p>
-                
-                <ul className="space-y-2">
-                  {module.features.map((feature) => (
-                    <li
-                      key={feature}
-                      className="text-sm text-muted-foreground flex items-center gap-2"
-                    >
-                      <div className="w-1.5 h-1.5 rounded-full bg-secondary" />
-                      {feature}
-                    </li>
-                  ))}
-                </ul>
+
+                <Button variant="outline" className="w-full" asChild>
+                  <Link to={module.href}>
+                    Open
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Link>
+                </Button>
               </div>
             );
           })}
@@ -193,33 +185,40 @@ export default function EconomyIndex() {
   }
 
   return (
-    <div className="space-y-8 animate-fade-in">
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold text-foreground">Economy Overview</h1>
-        <p className="text-lg text-muted-foreground">
-          A complete suite of tools for Swedish business accounting. Explore each module to learn more.
-        </p>
+    <div className="space-y-4 animate-fade-in">
+      <div className="space-y-1">
+        <h1 className="text-xl font-bold text-foreground">Economy Overview</h1>
       </div>
 
-      {/* Monthly Net Result Chart */}
+      {/* Year Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="rounded-lg border border-border bg-card p-4">
+          <p className="text-xs text-muted-foreground">Total Revenue</p>
+          <p className="text-xl font-bold mt-1 text-foreground">
+            {yearTotals.totalRevenue.toLocaleString("sv-SE", { minimumFractionDigits: 2 })} SEK
+          </p>
+        </div>
+        <div className="rounded-lg border border-border bg-card p-4">
+          <p className="text-xs text-muted-foreground">Total Expenses</p>
+          <p className="text-xl font-bold mt-1 text-foreground">
+            {yearTotals.totalExpenses.toLocaleString("sv-SE", { minimumFractionDigits: 2 })} SEK
+          </p>
+        </div>
+        <div className="rounded-lg border border-border bg-card p-4">
+          <p className="text-xs text-muted-foreground">Net Result</p>
+          <p className={`text-xl font-bold mt-1 ${yearTotals.netResult >= 0 ? "text-green-600" : "text-destructive"}`}>
+            {yearTotals.netResult >= 0 ? "+" : ""}{yearTotals.netResult.toLocaleString("sv-SE", { minimumFractionDigits: 2 })} SEK
+          </p>
+        </div>
+      </div>
+
+      {/* This Year's Net Result Chart */}
       <Card>
         <CardHeader className="pb-2">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-lg font-semibold">Monthly Net Result</CardTitle>
-            <div className="flex items-center gap-2">
-              {currentMonthResult >= 0 ? (
-                <TrendingUp className="h-5 w-5 text-green-500" />
-              ) : (
-                <TrendingDown className="h-5 w-5 text-destructive" />
-              )}
-              <span className={`text-lg font-bold ${currentMonthResult >= 0 ? "text-green-500" : "text-destructive"}`}>
-                {currentMonthResult >= 0 ? "+" : ""}{currentMonthResult.toLocaleString("sv-SE", { minimumFractionDigits: 2 })} SEK
-              </span>
-            </div>
-          </div>
-          <p className="text-sm text-muted-foreground">This month's income minus expenses</p>
+          <CardTitle className="text-lg font-semibold">{currentYear} Net Result</CardTitle>
+          <p className="text-sm text-muted-foreground">Monthly income minus expenses for {currentYear}</p>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent>
           {hasData ? (
             <ChartContainer config={chartConfig} className="h-[200px] w-full">
               <AreaChart data={monthlyData} margin={{ top: 20, right: 20, left: 20, bottom: 0 }}>
@@ -271,29 +270,28 @@ export default function EconomyIndex() {
             </ChartContainer>
           ) : (
             <div className="h-[200px] flex items-center justify-center text-muted-foreground">
-              <p>No voucher data yet. Create vouchers to see your monthly results.</p>
+              <p>No voucher data yet. Create vouchers to see your {currentYear} results.</p>
             </div>
           )}
-          
-          {/* 12-Month Total */}
-          <div className="flex items-center justify-between pt-2 border-t border-border">
-            <div>
-              <p className="text-sm font-medium text-foreground">12-Month Net Result</p>
-              <p className="text-xs text-muted-foreground">Rolling total for the last 12 months</p>
-            </div>
-            <div className="flex items-center gap-2">
-              {twelveMonthTotal >= 0 ? (
-                <TrendingUp className="h-5 w-5 text-green-500" />
-              ) : (
-                <TrendingDown className="h-5 w-5 text-destructive" />
-              )}
-              <span className={`text-lg font-bold ${twelveMonthTotal >= 0 ? "text-green-500" : "text-destructive"}`}>
-                {twelveMonthTotal >= 0 ? "+" : ""}{twelveMonthTotal.toLocaleString("sv-SE", { minimumFractionDigits: 2 })} SEK
-              </span>
-            </div>
-          </div>
         </CardContent>
       </Card>
+
+      {/* Rolling 12-month Net Result */}
+      <div className="rounded-lg border border-border bg-card p-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="text-xs text-muted-foreground">Net Result — Last 12 Months</p>
+            <p className={`text-xl font-bold mt-1 ${rolling12 >= 0 ? "text-green-600" : "text-destructive"}`}>
+              {rolling12 >= 0 ? "+" : ""}{rolling12.toLocaleString("sv-SE", { minimumFractionDigits: 2 })} SEK
+            </p>
+          </div>
+          {rolling12 >= 0 ? (
+            <TrendingUp className="h-5 w-5 text-green-600" />
+          ) : (
+            <TrendingDown className="h-5 w-5 text-destructive" />
+          )}
+        </div>
+      </div>
 
       <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
         {economyModules.map((module, index) => {
@@ -309,30 +307,14 @@ export default function EconomyIndex() {
                   <Icon className="h-6 w-6 text-secondary" />
                 </div>
               </div>
-              
-              <h3 className="text-xl font-semibold text-foreground mb-2">
+
+              <h3 className="text-base font-semibold text-foreground mb-6">
                 {module.name}
               </h3>
-              
-              <p className="text-muted-foreground text-sm mb-4">
-                {module.description}
-              </p>
-              
-              <ul className="space-y-2 mb-6">
-                {module.features.map((feature) => (
-                  <li
-                    key={feature}
-                    className="text-sm text-muted-foreground flex items-center gap-2"
-                  >
-                    <div className="w-1.5 h-1.5 rounded-full bg-secondary" />
-                    {feature}
-                  </li>
-                ))}
-              </ul>
-              
+
               <Button variant="outline" className="w-full" asChild>
                 <Link to={module.href}>
-                  Learn More
+                  Open
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>

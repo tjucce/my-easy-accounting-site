@@ -33,15 +33,19 @@ export interface InvoiceLine {
   quantity: number;
   unitPrice: number;
   vatRate: number;
+  vatCodeId?: string;
   totalExclVat: number;
   vatAmount: number;
   totalInclVat: number;
 }
 
+export type DocumentType = "invoice" | "quote";
+
 export interface Invoice {
   id: string;
   companyId: string;
   invoiceNumber: number;
+  documentType: DocumentType;
   customerId: string;
   customerName: string;
   customerAddress: string;
@@ -51,7 +55,7 @@ export interface Invoice {
   subtotal: number;
   totalVat: number;
   total: number;
-  status: "draft" | "sent" | "paid" | "overdue";
+  status: "draft" | "sent" | "paid" | "overdue" | "accepted" | "declined";
   paidDate?: string;
   createdAt: string;
 }

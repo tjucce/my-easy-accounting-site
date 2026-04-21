@@ -43,21 +43,7 @@ export default function AccountsPage() {
       );
     }
 
-    // If a year is selected, only show accounts that have transactions in that year
-    if (selectedYear !== undefined) {
-      const accountsWithTransactions = new Set<string>();
-      vouchers.forEach((v) => {
-        const vYear = new Date(v.date).getFullYear();
-        if (vYear === selectedYear) {
-          v.lines.forEach((l) => accountsWithTransactions.add(l.accountNumber));
-        }
-      });
-      // Show all accounts but mark which have transactions
-      // Actually, let's filter to show only accounts with transactions when a year is selected
-      if (accountsWithTransactions.size > 0) {
-        filtered = filtered.filter((a) => accountsWithTransactions.has(a.number));
-      }
-    }
+    // No year-based filtering - show all accounts regardless of year selection
 
     return filtered;
   }, [accounts, searchQuery, selectedYear, vouchers]);
@@ -67,28 +53,21 @@ export default function AccountsPage() {
   const statementEndDate = selectedYear ? `${selectedYear}-12-31` : undefined;
 
   return (
-    <div className="space-y-12 animate-fade-in">
+    <div className="space-y-4 animate-fade-in">
       {/* Header */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-12 h-12 rounded-lg bg-secondary/10 flex items-center justify-center">
-              <Wallet className="h-6 w-6 text-secondary" />
-            </div>
-            <div>
-              <h1 className="text-3xl font-bold text-foreground">Accounts</h1>
-              <p className="text-muted-foreground">
-                Chart of accounts based on Swedish BAS standard
-              </p>
-            </div>
-          </div>
+      <div className="flex items-center gap-3">
+        <div className="w-10 h-10 rounded-lg bg-secondary/10 flex items-center justify-center">
+          <Wallet className="h-5 w-5 text-secondary" />
+        </div>
+        <div>
+          <h1 className="text-xl font-bold text-foreground">Accounts</h1>
         </div>
       </div>
 
       {/* Accounts List */}
       <section>
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
-          <h2 className="text-2xl font-semibold text-foreground">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+          <h2 className="text-base font-semibold text-foreground">
             {user ? "Your Accounts" : "System Accounts"}
           </h2>
           <div className="flex items-center gap-2">
@@ -163,36 +142,37 @@ export default function AccountsPage() {
             </Button>
           </div>
         )}
-        <div className="bg-card rounded-xl border border-border overflow-hidden">
-          <table className="w-full">
+        <div className="bg-card rounded-lg border border-border overflow-hidden">
+          <table className="w-full text-xs">
             <thead>
               <tr className="border-b border-border bg-muted/30">
-                <th className="text-left py-3 px-4 font-semibold text-foreground">Account Number</th>
-                <th className="text-left py-3 px-4 font-semibold text-foreground">Account Name</th>
-                <th className="text-left py-3 px-4 font-semibold text-foreground">Class</th>
-                {user && <th className="text-right py-3 px-4 font-semibold text-foreground">Actions</th>}
+                <th className="text-left py-2 px-3 font-medium text-foreground">Account Number</th>
+                <th className="text-left py-2 px-3 font-medium text-foreground">Account Name</th>
+                <th className="text-left py-2 px-3 font-medium text-foreground">Class</th>
+                {user && <th className="text-right py-2 px-3 font-medium text-foreground">Actions</th>}
               </tr>
             </thead>
             <tbody>
               {filteredAccounts.map((account) => (
                 <tr key={account.number} className="border-b border-border/50">
-                  <td className="py-3 px-4 font-mono text-secondary font-semibold">
+                  <td className="py-2 px-3 font-mono text-secondary font-medium">
                     {account.number}
                   </td>
-                  <td className="py-3 px-4 text-foreground">{account.name}</td>
-                  <td className="py-3 px-4">
-                    <span className="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-secondary/10 text-secondary">
+                  <td className="py-2 px-3 text-foreground">{account.name}</td>
+                  <td className="py-2 px-3">
+                    <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-secondary/10 text-secondary">
                       {getAccountClassName(account.class)}
                     </span>
                   </td>
                   {user && (
-                    <td className="py-3 px-4 text-right">
+                    <td className="py-2 px-3 text-right">
                       <Button
                         variant="ghost"
                         size="sm"
+                        className="h-6 text-xs px-2"
                         onClick={() => setSelectedAccount(account.number)}
                       >
-                        <Eye className="h-4 w-4 mr-1" />
+                        <Eye className="h-3 w-3 mr-1" />
                         Statement
                       </Button>
                     </td>
@@ -203,19 +183,19 @@ export default function AccountsPage() {
           </table>
         </div>
 
-        <div className="mt-4 flex items-start gap-2 text-muted-foreground text-sm">
-          <Info className="h-4 w-4 shrink-0 mt-0.5" />
-          <span>
-            {user
-              ? "Click 'Statement' to view account transactions. Add new accounts using the button above."
-              : "Additional accounts can be added when logged in. All accounts must follow the BAS numbering standard."}
-          </span>
-        </div>
+        {!user && (
+          <div className="mt-4 flex items-start gap-2 text-muted-foreground text-sm">
+            <Info className="h-4 w-4 shrink-0 mt-0.5" />
+            <span>
+              Additional accounts can be added when logged in. All accounts must follow the BAS numbering standard.
+            </span>
+          </div>
+        )}
       </section>
 
       {/* Account Classes Reference */}
       <section className="info-section">
-        <h2 className="text-xl font-semibold text-foreground mb-6">
+        <h2 className="text-base font-semibold text-foreground mb-4">
           Account Class Reference
         </h2>
         <div className="space-y-4">

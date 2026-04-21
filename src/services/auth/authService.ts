@@ -24,7 +24,6 @@ class AuthService {
 
   async login(email: string, password: string): Promise<AuthResult> {
     if (
-      !isDatabaseAuthEnabled() &&
       isTestAccountEnabled() &&
       email === authConfig.testAccountEmail &&
       password === authConfig.testAccountPassword
@@ -49,6 +48,13 @@ class AuthService {
 
   async getUserById(id: string): Promise<User | null> {
     return this.repository.getUserById(id);
+  }
+
+  async deleteUser(id: string): Promise<boolean> {
+    if (this.repository.deleteUser) {
+      return this.repository.deleteUser(id);
+    }
+    return false;
   }
 
   // Method to check if database auth is configured
