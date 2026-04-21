@@ -349,10 +349,64 @@ export default function DeclarationPage() {
             <DeclarationField label="4.10 Skattemässig justering vid avyttring av näringsfastighet/näringsbostadsrätt" id="f4_10" sign="±" />
             <DeclarationField label="4.11 Skogs-/substansminskningsavdrag (blankett N8)" id="f4_11" sign="−" />
             <DeclarationField label="4.12 Återföringar vid avyttring av fastighet" id="f4_12" sign="+" />
-            <DeclarationField label="4.14 Underskott" id="f4_14" sign="−" />
+          </SectionCard>
+          <SectionCard title="4.14 Underskott">
+            <DeclarationField label="a. Outnyttjat underskott från föregående år" id="f4_14a" sign="−" />
+            <DeclarationField label="b. Reduktion av outnyttjat underskott med hänsyn till beloppsspärr, ackord, konkurs m.m." id="f4_14b" sign="+" />
+            <DeclarationField label="c. Reduktion av outnyttjat underskott med hänsyn till koncernbidragsspärr, fusionsspärr m.m. (beloppet ska också tas upp vid p. 1.2 på sid. 1)" id="f4_14c" sign="+" />
+          </SectionCard>
+          <SectionCard title="Resultat efter skattemässiga justeringar">
+            <DeclarationField label="4.15 Överskott (flyttas till p. 1.1 på sid. 1)" id="f4_15" sign="+" />
+            <DeclarationField label="4.16 Underskott (flyttas till p. 1.2 på sid. 1)" id="f4_16" sign="−" />
           </SectionCard>
         </div>
       </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-4">
+          <SectionCard title="Övriga uppgifter">
+            <DeclarationField label="4.17 Årets begärda och tidigare års medgivna värdeminskningsavdrag som finns vid beskattningsårets utgång avseende byggnader" id="f4_17" />
+            <DeclarationField label="4.18 Årets begärda och tidigare års medgivna värdeminskningsavdrag som finns vid beskattningsårets utgång avseende markanläggningar" id="f4_18" />
+            <DeclarationField label="4.19 Vid restvärdesavskrivning: återförda belopp för av- och nedskrivning, försäljning, utrangering" id="f4_19" />
+          </SectionCard>
+        </div>
+        <div className="space-y-4">
+          <SectionCard title="Övriga uppgifter (forts.)">
+            <DeclarationField label="4.20 Lån från aktieägare (fysisk person) vid beskattningsårets utgång" id="f4_20" />
+            <DeclarationField label="4.21 Pensionskostnader (som ingår i p. 3.8)" id="f4_21" />
+            <DeclarationField label="4.22 Koncernbidragsspärrat och fusionsspärrat underskott m.m. (frivillig uppgift)" id="f4_22" />
+          </SectionCard>
+        </div>
+      </div>
+
+      <SectionCard title="Upplysningar om årsredovisningen">
+        <div className="px-3 py-2.5 border-b border-border/50">
+          <p className="text-xs text-foreground mb-2">Uppdragstagare (t.ex. redovisningskonsult) har biträtt vid upprättandet av årsredovisningen</p>
+          <div className="flex gap-4">
+            <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
+              <input type="radio" name="uppdragstagare" className="h-3 w-3 accent-primary" />
+              Ja
+            </label>
+            <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
+              <input type="radio" name="uppdragstagare" className="h-3 w-3 accent-primary" />
+              Nej
+            </label>
+          </div>
+        </div>
+        <div className="px-3 py-2.5">
+          <p className="text-xs text-foreground mb-2">Årsredovisningen har varit föremål för revision</p>
+          <div className="flex gap-4">
+            <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
+              <input type="radio" name="revision" className="h-3 w-3 accent-primary" />
+              Ja
+            </label>
+            <label className="flex items-center gap-1.5 text-xs text-foreground cursor-pointer">
+              <input type="radio" name="revision" className="h-3 w-3 accent-primary" />
+              Nej
+            </label>
+          </div>
+        </div>
+      </SectionCard>
 
       <p className="text-[10px] text-muted-foreground mt-4">
         Ange belopp i hela kronor. Fälten kopplas till bokföringen i ett senare steg.
