@@ -587,7 +587,7 @@ function InvoiceDetailView({
 
 export default function BillingPage() {
   const { user } = useAuth();
-  const { customers, products, invoices, addCustomer, updateCustomer, deleteCustomer, addProduct, updateProduct, deleteProduct, deleteInvoice, updateInvoiceStatus, convertQuoteToInvoice } = useBilling();
+  const { customers, products, invoices, templates, addCustomer, updateCustomer, deleteCustomer, addProduct, updateProduct, deleteProduct, deleteInvoice, updateInvoiceStatus, convertQuoteToInvoice } = useBilling();
   const location = useLocation();
   
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
@@ -693,7 +693,7 @@ export default function BillingPage() {
 
       {/* Tabs */}
       <Tabs defaultValue="invoices" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="invoices" className="gap-2">
             <Receipt className="h-4 w-4" />
             Invoices ({actualInvoices.length})
@@ -710,7 +710,15 @@ export default function BillingPage() {
             <Package className="h-4 w-4" />
             Products ({products.length})
           </TabsTrigger>
+          <TabsTrigger value="templates" className="gap-2">
+            <FileCog className="h-4 w-4" />
+            Templates ({templates.length})
+          </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="templates" className="space-y-4">
+          <VoucherTemplateManager />
+        </TabsContent>
 
         {/* Customers Tab */}
         <TabsContent value="customers" className="space-y-4">
