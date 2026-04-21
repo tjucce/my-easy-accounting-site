@@ -197,6 +197,14 @@ function Row({ item, onToggle, onUpdate, onDelete }: RowProps) {
   }, []);
 
   const handleCheckClick = () => {
+    // If item is already done (in Finished section), move it back to Active immediately — no timer.
+    if (item.done) {
+      clearTimers();
+      setPendingToggle(false);
+      setCountdown(5);
+      onToggle(false);
+      return;
+    }
     if (pendingToggle) {
       // Cancel pending toggle (undo)
       clearTimers();
