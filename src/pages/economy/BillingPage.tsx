@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { FileText, Users, Package, Plus, Trash2, Edit, Receipt, Eye, X, Calendar, Send, Download, Mail, CheckCircle, DollarSign } from "lucide-react";
+import { FileText, Users, Package, Plus, Trash2, Edit, Receipt, Eye, X, Calendar, Send, Download, Mail, CheckCircle, DollarSign, FileCog } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
@@ -42,6 +42,10 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { CreateInvoiceDialog } from "@/components/billing/CreateInvoiceDialog";
 import { exportInvoicePDF } from "@/lib/pdf-export";
+import { useAccounting } from "@/contexts/AccountingContext";
+import { VoucherTemplateManager } from "@/components/billing/VoucherTemplateManager";
+import { buildVoucherFromTemplate, isTemplateBalanced } from "@/lib/billing/applyTemplate";
+import { VoucherTemplate } from "@/lib/billing/types";
 
 // Helper functions for input validation
 function formatPostalCode(value: string): string {
@@ -298,11 +302,15 @@ function InvoiceDetailView({
 }) {
   const { activeCompany } = useAuth();
   const navigate = useNavigate();
+  const { templates } = useBilling();
+  const { createVoucher } = useAccounting();
   const isQuote = invoice.documentType === "quote";
   const docLabel = isQuote ? "Quote" : "Invoice";
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showSendDialog, setShowSendDialog] = useState(false);
   const [showPaidConfirm, setShowPaidConfirm] = useState(false);
+  const defaultTpl = templates.find(t => t.isDefault) ?? templates[0];
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(defaultTpl?.id ?? "");
 
   const handleSendManually = () => {
     exportInvoicePDF(invoice, activeCompany ? {
@@ -320,11 +328,16 @@ function InvoiceDetailView({
     setShowSendDialog(false);
   };
 
-  const handleMarkPaid = (createVoucher: boolean) => {
+  const handleMarkPaid = (createVoucherChoice: boolean) => {
     onStatusChange(invoice.id, "paid");
     setShowPaidConfirm(false);
     toast.success("Invoice marked as paid");
-    if (createVoucher) {
+    if (!createVoucherChoice) return;
+
+    const tpl = templates.find(t => t.id === selectedTemplateId) ?? defaultTpl;
+
+    // No template available — fall back to old prefill flow on the accounting page.
+    if (!tpl) {
       const bookingAccount = activeCompany?.invoiceBookingAccount || "1930";
       navigate("/economy/accounting", {
         state: {
@@ -338,6 +351,36 @@ function InvoiceDetailView({
           },
         },
       });
+      return;
+    }
+
+    if (!isTemplateBalanced(invoice, tpl)) {
+      toast.error("Template is not balanced — opening voucher form to fix");
+      const built = buildVoucherFromTemplate(invoice, tpl);
+      navigate("/economy/accounting", {
+        state: {
+          openCreateVoucher: true,
+          prefillVoucher: {
+            description: built.description,
+            lines: built.lines,
+          },
+        },
+      });
+      return;
+    }
+
+    const built = buildVoucherFromTemplate(invoice, tpl);
+    const created = createVoucher({
+      date: built.date,
+      description: built.description,
+      lines: built.lines,
+    });
+    if (created) {
+      toast.success(`Voucher #${created.voucherNumber} created`, {
+        description: `From "${tpl.name}" template`,
+      });
+    } else {
+      toast.error("Could not create voucher — please review the template");
     }
   };
 
@@ -479,12 +522,31 @@ function InvoiceDetailView({
           <AlertDialogHeader>
             <AlertDialogTitle>Invoice Paid</AlertDialogTitle>
             <AlertDialogDescription>
-              Do you want to create a voucher for this invoice?
+              {templates.length > 0
+                ? "Create a voucher automatically using one of your templates?"
+                : "Do you want to create a voucher for this invoice? You can set up a template under Billing → Templates to make this automatic next time."}
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {templates.length > 0 && (
+            <div className="space-y-2">
+              <Label className="text-sm">Template</Label>
+              <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
+                <SelectTrigger><SelectValue placeholder="Pick a template" /></SelectTrigger>
+                <SelectContent>
+                  {templates.map(t => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}{t.isDefault ? " (default)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => handleMarkPaid(false)}>No</AlertDialogCancel>
-            <AlertDialogAction onClick={() => handleMarkPaid(true)}>Yes, Create Voucher</AlertDialogAction>
+            <AlertDialogAction onClick={() => handleMarkPaid(true)}>
+              {templates.length > 0 ? "Yes, Create Voucher" : "Yes, Open Voucher Form"}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -525,7 +587,7 @@ function InvoiceDetailView({
 
 export default function BillingPage() {
   const { user } = useAuth();
-  const { customers, products, invoices, addCustomer, updateCustomer, deleteCustomer, addProduct, updateProduct, deleteProduct, deleteInvoice, updateInvoiceStatus, convertQuoteToInvoice } = useBilling();
+  const { customers, products, invoices, templates, addCustomer, updateCustomer, deleteCustomer, addProduct, updateProduct, deleteProduct, deleteInvoice, updateInvoiceStatus, convertQuoteToInvoice } = useBilling();
   const location = useLocation();
   
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
@@ -631,7 +693,7 @@ export default function BillingPage() {
 
       {/* Tabs */}
       <Tabs defaultValue="invoices" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="invoices" className="gap-2">
             <Receipt className="h-4 w-4" />
             Invoices ({actualInvoices.length})
@@ -648,7 +710,15 @@ export default function BillingPage() {
             <Package className="h-4 w-4" />
             Products ({products.length})
           </TabsTrigger>
+          <TabsTrigger value="templates" className="gap-2">
+            <FileCog className="h-4 w-4" />
+            Templates ({templates.length})
+          </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="templates" className="space-y-4">
+          <VoucherTemplateManager />
+        </TabsContent>
 
         {/* Customers Tab */}
         <TabsContent value="customers" className="space-y-4">

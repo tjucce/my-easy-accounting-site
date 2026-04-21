@@ -60,6 +60,27 @@ export interface Invoice {
   createdAt: string;
 }
 
+export type TemplateAmountSource = "total" | "subtotal" | "totalVat" | "fixed";
+
+export interface VoucherTemplateLine {
+  id: string;
+  accountNumber: string;
+  accountName: string;
+  side: "debit" | "credit";
+  amountSource: TemplateAmountSource;
+  fixedAmount?: number;
+}
+
+export interface VoucherTemplate {
+  id: string;
+  companyId: string;
+  name: string;
+  description?: string;
+  isDefault?: boolean;
+  lines: VoucherTemplateLine[];
+  createdAt: string;
+}
+
 export function calculateProductPrice(price: number, includesVat: boolean, vatRate: number) {
   if (includesVat) {
     const priceExclVat = price / (1 + vatRate / 100);
