@@ -302,11 +302,15 @@ function InvoiceDetailView({
 }) {
   const { activeCompany } = useAuth();
   const navigate = useNavigate();
+  const { templates } = useBilling();
+  const { createVoucher } = useAccounting();
   const isQuote = invoice.documentType === "quote";
   const docLabel = isQuote ? "Quote" : "Invoice";
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showSendDialog, setShowSendDialog] = useState(false);
   const [showPaidConfirm, setShowPaidConfirm] = useState(false);
+  const defaultTpl = templates.find(t => t.isDefault) ?? templates[0];
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(defaultTpl?.id ?? "");
 
   const handleSendManually = () => {
     exportInvoicePDF(invoice, activeCompany ? {
@@ -324,11 +328,16 @@ function InvoiceDetailView({
     setShowSendDialog(false);
   };
 
-  const handleMarkPaid = (createVoucher: boolean) => {
+  const handleMarkPaid = (createVoucherChoice: boolean) => {
     onStatusChange(invoice.id, "paid");
     setShowPaidConfirm(false);
     toast.success("Invoice marked as paid");
-    if (createVoucher) {
+    if (!createVoucherChoice) return;
+
+    const tpl = templates.find(t => t.id === selectedTemplateId) ?? defaultTpl;
+
+    // No template available — fall back to old prefill flow on the accounting page.
+    if (!tpl) {
       const bookingAccount = activeCompany?.invoiceBookingAccount || "1930";
       navigate("/economy/accounting", {
         state: {
@@ -342,6 +351,36 @@ function InvoiceDetailView({
           },
         },
       });
+      return;
+    }
+
+    if (!isTemplateBalanced(invoice, tpl)) {
+      toast.error("Template is not balanced — opening voucher form to fix");
+      const built = buildVoucherFromTemplate(invoice, tpl);
+      navigate("/economy/accounting", {
+        state: {
+          openCreateVoucher: true,
+          prefillVoucher: {
+            description: built.description,
+            lines: built.lines,
+          },
+        },
+      });
+      return;
+    }
+
+    const built = buildVoucherFromTemplate(invoice, tpl);
+    const created = createVoucher({
+      date: built.date,
+      description: built.description,
+      lines: built.lines,
+    });
+    if (created) {
+      toast.success(`Voucher #${created.voucherNumber} created`, {
+        description: `From "${tpl.name}" template`,
+      });
+    } else {
+      toast.error("Could not create voucher — please review the template");
     }
   };
 
