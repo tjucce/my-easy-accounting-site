@@ -120,7 +120,7 @@ function TemplateForm({ initial, onSubmit, onCancel }: FormProps) {
   const [automaticBooking, setAutomaticBooking] = useState(initial?.automaticBooking ?? true);
   const [lines, setLines] = useState<VoucherTemplateLine[]>(
     initial?.lines ?? [
-      { id: crypto.randomUUID(), accountNumber: "1930", accountName: "Bankgiro", side: "debit", amountSource: "total" },
+      { id: crypto.randomUUID(), accountNumber: "", accountName: "", side: "debit", amountSource: "total" },
       { id: crypto.randomUUID(), accountNumber: "", accountName: "", side: "credit", amountSource: "subtotal" },
     ]
   );
