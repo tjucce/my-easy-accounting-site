@@ -47,8 +47,8 @@ interface FormProps {
   onCancel: () => void;
 }
 
-/** Tiny autocomplete input for BAS account numbers. */
-function AccountNumberInput({
+/** Account selector matching the voucher form: popover + searchable command list. */
+function AccountSelect({
   value,
   onChange,
 }: {
@@ -57,49 +57,59 @@ function AccountNumberInput({
 }) {
   const { accounts } = useAccounting();
   const [open, setOpen] = useState(false);
-  const suggestions = useMemo(() => {
-    if (!value) return [];
-    return accounts
-      .filter((a) => a.number.startsWith(value))
-      .slice(0, 8);
-  }, [accounts, value]);
+  const selected = accounts.find((a) => a.number === value);
 
   return (
-    <div className="relative">
-      <Input
-        value={value}
-        onChange={(e) => {
-          const num = e.target.value.replace(/\D/g, "").slice(0, 4);
-          const acc = accounts.find((a) => a.number === num);
-          onChange(num, acc?.name ?? "");
-          setOpen(true);
-        }}
-        onFocus={() => setOpen(true)}
-        onBlur={() => setTimeout(() => setOpen(false), 150)}
-        placeholder="1930"
-        maxLength={4}
-        autoComplete="off"
-      />
-      {open && suggestions.length > 0 && (
-        <div className="absolute z-50 mt-1 w-64 max-h-60 overflow-y-auto rounded-md border border-border bg-popover shadow-md">
-          {suggestions.map((a) => (
-            <button
-              key={a.number}
-              type="button"
-              onMouseDown={(e) => e.preventDefault()}
-              onClick={() => {
-                onChange(a.number, a.name);
-                setOpen(false);
-              }}
-              className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-muted"
-            >
-              <span className="font-mono w-10 text-secondary">{a.number}</span>
-              <span className="truncate">{a.name}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between font-normal overflow-hidden"
+        >
+          {value ? (
+            <span className="truncate">
+              <span className="font-mono">{value}</span>
+              {selected && <span className="ml-2 text-muted-foreground">{selected.name}</span>}
+            </span>
+          ) : (
+            <span className="text-muted-foreground">Select account...</span>
+          )}
+          <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[360px] p-0" align="start">
+        <Command>
+          <CommandInput placeholder="Search by number or name..." />
+          <CommandList>
+            <CommandEmpty>No account found.</CommandEmpty>
+            <CommandGroup className="max-h-64 overflow-auto">
+              {accounts.map((account) => (
+                <CommandItem
+                  key={account.number}
+                  value={`${account.number} ${account.name}`}
+                  onSelect={() => {
+                    onChange(account.number, account.name);
+                    setOpen(false);
+                  }}
+                >
+                  <Check
+                    className={cn(
+                      "mr-2 h-4 w-4",
+                      value === account.number ? "opacity-100" : "opacity-0",
+                    )}
+                  />
+                  <span className="font-mono">{account.number}</span>
+                  <span className="ml-2 text-muted-foreground">{account.name}</span>
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
   );
 }
 
