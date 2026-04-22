@@ -30,6 +30,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useBilling } from "@/contexts/BillingContext";
@@ -43,7 +49,7 @@ import { format } from "date-fns";
 import { CreateInvoiceDialog } from "@/components/billing/CreateInvoiceDialog";
 import { exportInvoicePDF } from "@/lib/pdf-export";
 import { useAccounting } from "@/contexts/AccountingContext";
-import { VoucherTemplateManager } from "@/components/billing/VoucherTemplateManager";
+import { TemplateFormDialog, ExistingTemplatesDialog } from "@/components/billing/VoucherTemplateManager";
 import { buildVoucherFromTemplate, isTemplateBalanced } from "@/lib/billing/applyTemplate";
 import { VoucherTemplate } from "@/lib/billing/types";
 
