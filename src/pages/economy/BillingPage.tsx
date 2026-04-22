@@ -333,15 +333,15 @@ function InvoiceDetailView({
     setShowSendDialog(false);
   };
 
-  const handleMarkPaid = (createVoucherChoice: boolean) => {
+  const handleMarkPaid = (useAutomatic: boolean) => {
     onStatusChange(invoice.id, "paid");
     setShowPaidConfirm(false);
     toast.success("Invoice marked as paid");
-    if (!createVoucherChoice) return;
+    if (!useAutomatic) return;
 
-    const tpl = templates.find(t => t.id === selectedTemplateId) ?? defaultTpl;
+    const tpl = linkedTemplate;
 
-    // No template available — fall back to old prefill flow on the accounting page.
+    // No template linked — fall back to old prefill flow on the accounting page.
     if (!tpl) {
       const bookingAccount = activeCompany?.invoiceBookingAccount || "1930";
       navigate("/economy/accounting", {
