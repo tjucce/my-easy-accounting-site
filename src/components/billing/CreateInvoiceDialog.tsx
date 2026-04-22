@@ -708,7 +708,15 @@ export function CreateInvoiceDialog({ open, onOpenChange, inline, documentType =
         <Card>
           <CardHeader className="py-3 px-4">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Create {docLabel}</CardTitle>
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-base">Create {docLabel}</CardTitle>
+                {selectedTemplate && (
+                  <span className="inline-flex items-center gap-1 rounded-md bg-green-600/15 text-green-700 dark:text-green-400 px-2 py-0.5 text-xs font-medium border border-green-600/30">
+                    <FileCog className="h-3 w-3" />
+                    {selectedTemplate.name}
+                  </span>
+                )}
+              </div>
               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => onOpenChange(false)}>
                 <X className="h-4 w-4" />
               </Button>
