@@ -711,7 +711,7 @@ export function CreateInvoiceDialog({ open, onOpenChange, inline, documentType =
               <div className="flex items-center gap-2">
                 <CardTitle className="text-base">Create {docLabel}</CardTitle>
                 {selectedTemplate && (
-                  <span className="inline-flex items-center gap-1 rounded-md bg-green-600/15 text-green-700 dark:text-green-400 px-2 py-0.5 text-xs font-medium border border-green-600/30">
+                  <span className="inline-flex items-center gap-1 rounded-md bg-secondary/15 text-secondary px-2 py-0.5 text-xs font-medium border border-secondary/30">
                     <FileCog className="h-3 w-3" />
                     {selectedTemplate.name}
                   </span>
