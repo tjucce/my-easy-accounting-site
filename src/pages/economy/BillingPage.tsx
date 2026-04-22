@@ -702,10 +702,6 @@ export default function BillingPage() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="templates" className="space-y-4">
-          <VoucherTemplateManager />
-        </TabsContent>
-
         {/* Customers Tab */}
         <TabsContent value="customers" className="space-y-4">
           <div className="flex justify-between items-center">
