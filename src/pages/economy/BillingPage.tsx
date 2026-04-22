@@ -683,7 +683,7 @@ export default function BillingPage() {
 
       {/* Tabs */}
       <Tabs defaultValue="invoices" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="invoices" className="gap-2">
             <Receipt className="h-4 w-4" />
             Invoices ({actualInvoices.length})
@@ -699,10 +699,6 @@ export default function BillingPage() {
           <TabsTrigger value="products" className="gap-2">
             <Package className="h-4 w-4" />
             Products ({products.length})
-          </TabsTrigger>
-          <TabsTrigger value="templates" className="gap-2">
-            <FileCog className="h-4 w-4" />
-            Templates ({templates.length})
           </TabsTrigger>
         </TabsList>
 
