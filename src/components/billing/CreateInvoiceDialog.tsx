@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Plus, Trash2, UserPlus, Package, X, CalendarIcon, AlertCircle } from "lucide-react";
+import { Plus, Trash2, UserPlus, Package, X, CalendarIcon, AlertCircle, FileCog } from "lucide-react";
 import { Customer, Product, InvoiceLine, Invoice, DocumentType, calculateInvoiceLine, calculateProductPrice } from "@/lib/billing/types";
 import { useBilling } from "@/contexts/BillingContext";
 import { useVat } from "@/contexts/VatContext";
@@ -77,11 +77,14 @@ function filterCity(value: string): string {
 }
 
 export function CreateInvoiceDialog({ open, onOpenChange, inline, documentType = "invoice", onInvoiceCreated }: CreateInvoiceDialogProps) {
-  const { customers, products, addCustomer, addProduct, updateProduct, createInvoice } = useBilling();
+  const { customers, products, templates, addCustomer, addProduct, updateProduct, createInvoice } = useBilling();
   const { vatCodes, vatSettings } = useVat();
   const { isDateInLockedPeriod } = useVatPeriodLock();
   const outgoingCodes = getOutgoingCodes(vatCodes);
   const defaultSalesCodeId = vatSettings.defaultSalesCodeId || (outgoingCodes[0]?.id ?? "SE25");
+
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("__none__");
+  const selectedTemplate = templates.find((t) => t.id === selectedTemplateId);
 
   const [priceMode, setPriceMode] = useState<"excl" | "incl">("excl");
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>("");
