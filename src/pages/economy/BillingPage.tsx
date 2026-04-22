@@ -587,6 +587,9 @@ export default function BillingPage() {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [editingCustomer, setEditingCustomer] = useState<Customer | undefined>();
   const [editingProduct, setEditingProduct] = useState<Product | undefined>();
+  const [templateFormOpen, setTemplateFormOpen] = useState(false);
+  const [editTemplate, setEditTemplate] = useState<VoucherTemplate | undefined>();
+  const [existingTemplatesOpen, setExistingTemplatesOpen] = useState(false);
 
   // Compute display status: only sent invoices can become overdue
   const getDisplayStatus = (inv: Invoice) => {
@@ -866,11 +869,45 @@ export default function BillingPage() {
             <>
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-semibold">Invoices</h2>
-                <Button onClick={() => setShowCreateInvoice(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Invoice
-                </Button>
+                <div className="flex items-center gap-2">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline">
+                        <FileCog className="h-4 w-4 mr-2" />
+                        Template
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() => { setEditTemplate(undefined); setTemplateFormOpen(true); }}
+                      >
+                        <Plus className="h-4 w-4 mr-2" /> Create new
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={templates.length === 0}
+                        onClick={() => setExistingTemplatesOpen(true)}
+                      >
+                        <Edit className="h-4 w-4 mr-2" /> Edit existing
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <Button onClick={() => setShowCreateInvoice(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Invoice
+                  </Button>
+                </div>
               </div>
+
+              <TemplateFormDialog
+                open={templateFormOpen}
+                onOpenChange={(o) => { setTemplateFormOpen(o); if (!o) setEditTemplate(undefined); }}
+                template={editTemplate}
+              />
+              <ExistingTemplatesDialog
+                open={existingTemplatesOpen}
+                onOpenChange={setExistingTemplatesOpen}
+                onEdit={(tpl) => { setEditTemplate(tpl); setTemplateFormOpen(true); }}
+              />
 
               {actualInvoices.length === 0 ? (
                 <Card>
