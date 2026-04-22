@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Plus, Trash2, Edit, X } from "lucide-react";
+import { useState } from "react";
+import { Plus, Trash2, Edit, Check, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,6 +19,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/components/ui/command";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 import { useBilling } from "@/contexts/BillingContext";
 import { useAccounting } from "@/contexts/AccountingContext";
 import { VoucherTemplate, VoucherTemplateLine, TemplateAmountSource } from "@/lib/billing/types";
