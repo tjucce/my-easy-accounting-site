@@ -211,12 +211,11 @@ function TemplateForm({ initial, onSubmit, onCancel }: FormProps) {
           </div>
           <div className="space-y-2">
             {lines.map((line) => (
-              <div key={line.id} className="grid grid-cols-[100px_1fr_120px_140px_32px] gap-2 items-center">
-                <AccountNumberInput
+              <div key={line.id} className="grid grid-cols-[1fr_120px_140px_32px] gap-2 items-center">
+                <AccountSelect
                   value={line.accountNumber}
                   onChange={(num, accName) => updateLine(line.id, { accountNumber: num, accountName: accName })}
                 />
-                <div className="text-xs text-muted-foreground truncate">{line.accountName || "—"}</div>
                 <Select value={line.side} onValueChange={(v) => updateLine(line.id, { side: v as "debit" | "credit" })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
