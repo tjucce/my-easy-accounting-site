@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Plus, Trash2, Edit, Star, X } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Plus, Trash2, Edit, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,7 +23,6 @@ import { useBilling } from "@/contexts/BillingContext";
 import { useAccounting } from "@/contexts/AccountingContext";
 import { VoucherTemplate, VoucherTemplateLine, TemplateAmountSource } from "@/lib/billing/types";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
 
 const SOURCE_LABEL: Record<TemplateAmountSource, string> = {
   total: "Total (incl. VAT)",
@@ -38,11 +37,67 @@ interface FormProps {
   onCancel: () => void;
 }
 
+/** Tiny autocomplete input for BAS account numbers. */
+function AccountNumberInput({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (number: string, name: string) => void;
+}) {
+  const { accounts } = useAccounting();
+  const [open, setOpen] = useState(false);
+  const suggestions = useMemo(() => {
+    if (!value) return [];
+    return accounts
+      .filter((a) => a.number.startsWith(value))
+      .slice(0, 8);
+  }, [accounts, value]);
+
+  return (
+    <div className="relative">
+      <Input
+        value={value}
+        onChange={(e) => {
+          const num = e.target.value.replace(/\D/g, "").slice(0, 4);
+          const acc = accounts.find((a) => a.number === num);
+          onChange(num, acc?.name ?? "");
+          setOpen(true);
+        }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 150)}
+        placeholder="1930"
+        maxLength={4}
+        autoComplete="off"
+      />
+      {open && suggestions.length > 0 && (
+        <div className="absolute z-50 mt-1 w-64 max-h-60 overflow-y-auto rounded-md border border-border bg-popover shadow-md">
+          {suggestions.map((a) => (
+            <button
+              key={a.number}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                onChange(a.number, a.name);
+                setOpen(false);
+              }}
+              className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-muted"
+            >
+              <span className="font-mono w-10 text-secondary">{a.number}</span>
+              <span className="truncate">{a.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TemplateForm({ initial, onSubmit, onCancel }: FormProps) {
   const { accounts } = useAccounting();
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
-  const [isDefault, setIsDefault] = useState(initial?.isDefault ?? false);
+  const [automaticBooking, setAutomaticBooking] = useState(initial?.automaticBooking ?? true);
   const [lines, setLines] = useState<VoucherTemplateLine[]>(
     initial?.lines ?? [
       { id: crypto.randomUUID(), accountNumber: "1930", accountName: "Bankgiro", side: "debit", amountSource: "total" },
@@ -51,17 +106,20 @@ function TemplateForm({ initial, onSubmit, onCancel }: FormProps) {
   );
 
   const updateLine = (id: string, patch: Partial<VoucherTemplateLine>) => {
-    setLines(lines.map(l => l.id === id ? { ...l, ...patch } : l));
+    setLines((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)));
   };
 
   const addLine = () => {
-    setLines([...lines, {
-      id: crypto.randomUUID(),
-      accountNumber: "",
-      accountName: "",
-      side: "credit",
-      amountSource: "subtotal",
-    }]);
+    setLines((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        accountNumber: "",
+        accountName: "",
+        side: "credit",
+        amountSource: "subtotal",
+      },
+    ]);
   };
 
   const removeLine = (id: string) => {
@@ -69,27 +127,35 @@ function TemplateForm({ initial, onSubmit, onCancel }: FormProps) {
       toast.error("A template needs at least 2 lines");
       return;
     }
-    setLines(lines.filter(l => l.id !== id));
+    setLines((prev) => prev.filter((l) => l.id !== id));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim()) { toast.error("Name is required"); return; }
-    for (const l of lines) {
-      if (!l.accountNumber.trim()) { toast.error("All lines need an account number"); return; }
-      if (l.amountSource === "fixed" && (!l.fixedAmount || l.fixedAmount <= 0)) {
-        toast.error("Fixed amount must be greater than 0");
-        return;
+    if (!name.trim()) {
+      toast.error("Name is required");
+      return;
+    }
+    if (automaticBooking) {
+      for (const l of lines) {
+        if (!l.accountNumber.trim()) {
+          toast.error("All voucher lines need an account number");
+          return;
+        }
+        if (l.amountSource === "fixed" && (!l.fixedAmount || l.fixedAmount <= 0)) {
+          toast.error("Fixed amount must be greater than 0");
+          return;
+        }
       }
     }
-    const cleaned = lines.map(l => {
-      const account = accounts.find(a => a.number === l.accountNumber);
+    const cleaned = lines.map((l) => {
+      const account = accounts.find((a) => a.number === l.accountNumber);
       return { ...l, accountName: account?.name ?? l.accountName };
     });
     onSubmit({
       name: name.trim(),
       description: description.trim() || undefined,
-      isDefault,
+      automaticBooking,
       lines: cleaned,
     });
   };
@@ -104,77 +170,74 @@ function TemplateForm({ initial, onSubmit, onCancel }: FormProps) {
         <Label htmlFor="tplDesc">Description</Label>
         <Input id="tplDesc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional" />
       </div>
+
       <div className="flex items-center justify-between rounded-lg border border-border p-3">
         <div>
-          <p className="text-sm font-medium">Use as default template</p>
-          <p className="text-xs text-muted-foreground">Auto-selected when marking invoices as paid</p>
+          <p className="text-sm font-medium">Automatic voucher booking</p>
+          <p className="text-xs text-muted-foreground">
+            When on, voucher lines below are used to auto-book paid invoices linked to this template.
+          </p>
         </div>
-        <Switch checked={isDefault} onCheckedChange={setIsDefault} />
+        <Switch checked={automaticBooking} onCheckedChange={setAutomaticBooking} />
       </div>
 
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <Label>Voucher Lines</Label>
-          <Button type="button" size="sm" variant="outline" onClick={addLine}>
-            <Plus className="h-3 w-3 mr-1" /> Add line
-          </Button>
-        </div>
+      {automaticBooking && (
         <div className="space-y-2">
-          {lines.map((line) => (
-            <div key={line.id} className="grid grid-cols-[100px_1fr_120px_140px_32px] gap-2 items-center">
-              <Input
-                value={line.accountNumber}
-                onChange={(e) => {
-                  const num = e.target.value.replace(/\D/g, "").slice(0, 4);
-                  const acc = accounts.find(a => a.number === num);
-                  updateLine(line.id, { accountNumber: num, accountName: acc?.name ?? "" });
-                }}
-                placeholder="1930"
-                maxLength={4}
-              />
-              <div className="text-xs text-muted-foreground truncate">
-                {line.accountName || "—"}
-              </div>
-              <Select value={line.side} onValueChange={(v) => updateLine(line.id, { side: v as "debit" | "credit" })}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="debit">Debit</SelectItem>
-                  <SelectItem value="credit">Credit</SelectItem>
-                </SelectContent>
-              </Select>
-              <div className="space-y-1">
-                <Select
-                  value={line.amountSource}
-                  onValueChange={(v) => updateLine(line.id, { amountSource: v as TemplateAmountSource })}
-                >
+          <div className="flex items-center justify-between">
+            <Label>Voucher Lines</Label>
+            <Button type="button" size="sm" variant="outline" onClick={addLine}>
+              <Plus className="h-3 w-3 mr-1" /> Add line
+            </Button>
+          </div>
+          <div className="space-y-2">
+            {lines.map((line) => (
+              <div key={line.id} className="grid grid-cols-[100px_1fr_120px_140px_32px] gap-2 items-center">
+                <AccountNumberInput
+                  value={line.accountNumber}
+                  onChange={(num, accName) => updateLine(line.id, { accountNumber: num, accountName: accName })}
+                />
+                <div className="text-xs text-muted-foreground truncate">{line.accountName || "—"}</div>
+                <Select value={line.side} onValueChange={(v) => updateLine(line.id, { side: v as "debit" | "credit" })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    {(Object.keys(SOURCE_LABEL) as TemplateAmountSource[]).map(s => (
-                      <SelectItem key={s} value={s}>{SOURCE_LABEL[s]}</SelectItem>
-                    ))}
+                    <SelectItem value="debit">Debit</SelectItem>
+                    <SelectItem value="credit">Credit</SelectItem>
                   </SelectContent>
                 </Select>
-                {line.amountSource === "fixed" && (
-                  <Input
-                    type="number"
-                    min="0"
-                    step="1"
-                    value={line.fixedAmount ?? ""}
-                    onChange={(e) => updateLine(line.id, { fixedAmount: parseFloat(e.target.value) || 0 })}
-                    placeholder="Amount"
-                  />
-                )}
+                <div className="space-y-1">
+                  <Select
+                    value={line.amountSource}
+                    onValueChange={(v) => updateLine(line.id, { amountSource: v as TemplateAmountSource })}
+                  >
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(SOURCE_LABEL) as TemplateAmountSource[]).map((s) => (
+                        <SelectItem key={s} value={s}>{SOURCE_LABEL[s]}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {line.amountSource === "fixed" && (
+                    <Input
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={line.fixedAmount ?? ""}
+                      onChange={(e) => updateLine(line.id, { fixedAmount: parseFloat(e.target.value) || 0 })}
+                      placeholder="Amount"
+                    />
+                  )}
+                </div>
+                <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeLine(line.id)}>
+                  <Trash2 className="h-4 w-4 text-destructive" />
+                </Button>
               </div>
-              <Button type="button" variant="ghost" size="icon" className="h-8 w-8" onClick={() => removeLine(line.id)}>
-                <Trash2 className="h-4 w-4 text-destructive" />
-              </Button>
-            </div>
-          ))}
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Tip: pick which invoice amount fills each line. Debit and credit must balance per voucher.
+          </p>
         </div>
-        <p className="text-xs text-muted-foreground">
-          Tip: pick which invoice amount fills each line. Debit and credit must balance per voucher.
-        </p>
-      </div>
+      )}
 
       <div className="flex gap-3 pt-2">
         <Button type="button" variant="outline" onClick={onCancel} className="flex-1">Cancel</Button>
@@ -184,10 +247,28 @@ function TemplateForm({ initial, onSubmit, onCancel }: FormProps) {
   );
 }
 
-export function VoucherTemplateManager() {
-  const { templates, addTemplate, updateTemplate, deleteTemplate, setDefaultTemplate } = useBilling();
+interface VoucherTemplateManagerProps {
+  /** When provided, the manager opens directly into editing this template, no list view. */
+  editTemplateId?: string;
+  /** When provided, called after a save (create/update) so the parent can close itself. */
+  onSaved?: () => void;
+  /** When true, hides the outer "New Template" button (used inside a controlled dialog). */
+  hideHeaderButton?: boolean;
+  /** When provided, used as the controlled "create new" trigger so the parent dialog can close. */
+  onRequestCreate?: () => void;
+}
+
+export function VoucherTemplateManager({
+  editTemplateId,
+  onSaved,
+  hideHeaderButton,
+  onRequestCreate,
+}: VoucherTemplateManagerProps = {}) {
+  const { templates, addTemplate, updateTemplate, deleteTemplate } = useBilling();
   const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<VoucherTemplate | undefined>();
+  const [editing, setEditing] = useState<VoucherTemplate | undefined>(
+    editTemplateId ? templates.find((t) => t.id === editTemplateId) : undefined,
+  );
 
   const handleSubmit = (data: Omit<VoucherTemplate, "id" | "companyId" | "createdAt">) => {
     if (editing) {
@@ -199,21 +280,103 @@ export function VoucherTemplateManager() {
     }
     setOpen(false);
     setEditing(undefined);
+    onSaved?.();
   };
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <div>
-          <h2 className="text-xl font-semibold">Voucher Templates</h2>
-          <p className="text-sm text-muted-foreground">
-            Define how vouchers are created automatically when an invoice is marked as paid.
-          </p>
+      {!hideHeaderButton && (
+        <div className="flex justify-between items-center">
+          <div>
+            <h2 className="text-xl font-semibold">Voucher Templates</h2>
+            <p className="text-sm text-muted-foreground">
+              Define how vouchers are created automatically when an invoice is marked as paid.
+            </p>
+          </div>
+          <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setEditing(undefined); }}>
+            <DialogTrigger asChild>
+              <Button onClick={onRequestCreate}><Plus className="h-4 w-4 mr-2" />New Template</Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>{editing ? "Edit Template" : "New Voucher Template"}</DialogTitle>
+              </DialogHeader>
+              <TemplateForm
+                initial={editing}
+                onSubmit={handleSubmit}
+                onCancel={() => { setOpen(false); setEditing(undefined); }}
+              />
+            </DialogContent>
+          </Dialog>
         </div>
+      )}
+
+      {templates.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center text-muted-foreground">
+            No templates yet. Create one to enable automatic voucher creation when marking invoices as paid.
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-3 md:grid-cols-2">
+          {templates.map((tpl) => (
+            <Card key={tpl.id}>
+              <CardContent className="p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-medium truncate">{tpl.name}</p>
+                    {tpl.description && (
+                      <p className="text-xs text-muted-foreground truncate">{tpl.description}</p>
+                    )}
+                  </div>
+                  <div className="flex gap-1 shrink-0">
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditing(tpl); setOpen(true); }}>
+                      <Edit className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { deleteTemplate(tpl.id); toast.success("Template deleted"); }}>
+                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
+
+                {tpl.automaticBooking !== false && (
+                  <div className="rounded-md border border-border overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/40">
+                        <tr>
+                          <th className="text-left py-1.5 px-2 font-medium">Account</th>
+                          <th className="text-left py-1.5 px-2 font-medium w-16">Side</th>
+                          <th className="text-left py-1.5 px-2 font-medium">Amount from</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {tpl.lines.map((l) => (
+                          <tr key={l.id} className="border-t border-border/50">
+                            <td className="py-1.5 px-2">
+                              <span className="font-mono">{l.accountNumber}</span>
+                              <span className="text-muted-foreground ml-1 truncate">{l.accountName}</span>
+                            </td>
+                            <td className="py-1.5 px-2 capitalize">{l.side}</td>
+                            <td className="py-1.5 px-2 text-muted-foreground">
+                              {l.amountSource === "fixed"
+                                ? `Fixed ${l.fixedAmount ?? 0} kr`
+                                : SOURCE_LABEL[l.amountSource]}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Hidden dialog used to launch a "Create new" flow from outside (inline list). */}
+      {hideHeaderButton && (
         <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setEditing(undefined); }}>
-          <DialogTrigger asChild>
-            <Button><Plus className="h-4 w-4 mr-2" />New Template</Button>
-          </DialogTrigger>
           <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>{editing ? "Edit Template" : "New Voucher Template"}</DialogTitle>
@@ -225,80 +388,105 @@ export function VoucherTemplateManager() {
             />
           </DialogContent>
         </Dialog>
-      </div>
-
-      {templates.length === 0 ? (
-        <Card>
-          <CardContent className="py-12 text-center text-muted-foreground">
-            No templates yet. Create one to enable automatic voucher creation when marking invoices as paid.
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-3 md:grid-cols-2">
-          {templates.map((tpl) => (
-            <Card key={tpl.id} className={cn(tpl.isDefault && "border-secondary")}>
-              <CardContent className="p-4 space-y-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium truncate">{tpl.name}</p>
-                      {tpl.isDefault && (
-                        <span className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-secondary/15 text-secondary">
-                          <Star className="h-3 w-3" /> Default
-                        </span>
-                      )}
-                    </div>
-                    {tpl.description && (
-                      <p className="text-xs text-muted-foreground truncate">{tpl.description}</p>
-                    )}
-                  </div>
-                  <div className="flex gap-1 shrink-0">
-                    {!tpl.isDefault && (
-                      <Button variant="ghost" size="icon" className="h-7 w-7" title="Set as default" onClick={() => setDefaultTemplate(tpl.id)}>
-                        <Star className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { setEditing(tpl); setOpen(true); }}>
-                      <Edit className="h-3.5 w-3.5" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => { deleteTemplate(tpl.id); toast.success("Template deleted"); }}>
-                      <Trash2 className="h-3.5 w-3.5 text-destructive" />
-                    </Button>
-                  </div>
-                </div>
-
-                <div className="rounded-md border border-border overflow-hidden">
-                  <table className="w-full text-xs">
-                    <thead className="bg-muted/40">
-                      <tr>
-                        <th className="text-left py-1.5 px-2 font-medium">Account</th>
-                        <th className="text-left py-1.5 px-2 font-medium w-16">Side</th>
-                        <th className="text-left py-1.5 px-2 font-medium">Amount from</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {tpl.lines.map((l) => (
-                        <tr key={l.id} className="border-t border-border/50">
-                          <td className="py-1.5 px-2">
-                            <span className="font-mono">{l.accountNumber}</span>
-                            <span className="text-muted-foreground ml-1 truncate">{l.accountName}</span>
-                          </td>
-                          <td className="py-1.5 px-2 capitalize">{l.side}</td>
-                          <td className="py-1.5 px-2 text-muted-foreground">
-                            {l.amountSource === "fixed"
-                              ? `Fixed ${l.fixedAmount ?? 0} kr`
-                              : SOURCE_LABEL[l.amountSource]}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Dedicated dialog form for creating/editing a single template, decoupled from the list.
+ * Used by the "Template" button on the Invoices tab.
+ */
+export function TemplateFormDialog({
+  open,
+  onOpenChange,
+  template,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  template?: VoucherTemplate;
+}) {
+  const { addTemplate, updateTemplate } = useBilling();
+
+  const handleSubmit = (data: Omit<VoucherTemplate, "id" | "companyId" | "createdAt">) => {
+    if (template) {
+      updateTemplate({ ...template, ...data });
+      toast.success("Template updated");
+    } else {
+      addTemplate(data);
+      toast.success("Template created");
+    }
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{template ? "Edit Template" : "New Voucher Template"}</DialogTitle>
+        </DialogHeader>
+        <TemplateForm
+          initial={template}
+          onSubmit={handleSubmit}
+          onCancel={() => onOpenChange(false)}
+        />
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/**
+ * Dialog listing existing templates with edit + delete actions.
+ * Used by the "Template → Edit existing" flow on the Invoices tab.
+ */
+export function ExistingTemplatesDialog({
+  open,
+  onOpenChange,
+  onEdit,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onEdit: (template: VoucherTemplate) => void;
+}) {
+  const { templates, deleteTemplate } = useBilling();
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Edit existing template</DialogTitle>
+        </DialogHeader>
+        {templates.length === 0 ? (
+          <p className="text-sm text-muted-foreground py-6 text-center">
+            No templates yet. Create one first.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {templates.map((tpl) => (
+              <div key={tpl.id} className="flex items-center justify-between rounded-md border border-border p-3">
+                <div className="min-w-0">
+                  <p className="font-medium truncate">{tpl.name}</p>
+                  {tpl.description && (
+                    <p className="text-xs text-muted-foreground truncate">{tpl.description}</p>
+                  )}
+                </div>
+                <div className="flex gap-1 shrink-0">
+                  <Button variant="outline" size="sm" onClick={() => { onEdit(tpl); onOpenChange(false); }}>
+                    <Edit className="h-3.5 w-3.5 mr-1" /> Edit
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => { deleteTemplate(tpl.id); toast.success("Template deleted"); }}
+                  >
+                    <Trash2 className="h-4 w-4 text-destructive" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

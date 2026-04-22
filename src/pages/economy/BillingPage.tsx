@@ -30,6 +30,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useBilling } from "@/contexts/BillingContext";
@@ -43,7 +49,7 @@ import { format } from "date-fns";
 import { CreateInvoiceDialog } from "@/components/billing/CreateInvoiceDialog";
 import { exportInvoicePDF } from "@/lib/pdf-export";
 import { useAccounting } from "@/contexts/AccountingContext";
-import { VoucherTemplateManager } from "@/components/billing/VoucherTemplateManager";
+import { TemplateFormDialog, ExistingTemplatesDialog } from "@/components/billing/VoucherTemplateManager";
 import { buildVoucherFromTemplate, isTemplateBalanced } from "@/lib/billing/applyTemplate";
 import { VoucherTemplate } from "@/lib/billing/types";
 
@@ -309,8 +315,7 @@ function InvoiceDetailView({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showSendDialog, setShowSendDialog] = useState(false);
   const [showPaidConfirm, setShowPaidConfirm] = useState(false);
-  const defaultTpl = templates.find(t => t.isDefault) ?? templates[0];
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(defaultTpl?.id ?? "");
+  const linkedTemplate = invoice.templateId ? templates.find(t => t.id === invoice.templateId) : undefined;
 
   const handleSendManually = () => {
     exportInvoicePDF(invoice, activeCompany ? {
@@ -328,15 +333,15 @@ function InvoiceDetailView({
     setShowSendDialog(false);
   };
 
-  const handleMarkPaid = (createVoucherChoice: boolean) => {
+  const handleMarkPaid = (useAutomatic: boolean) => {
     onStatusChange(invoice.id, "paid");
     setShowPaidConfirm(false);
     toast.success("Invoice marked as paid");
-    if (!createVoucherChoice) return;
+    if (!useAutomatic) return;
 
-    const tpl = templates.find(t => t.id === selectedTemplateId) ?? defaultTpl;
+    const tpl = linkedTemplate;
 
-    // No template available — fall back to old prefill flow on the accounting page.
+    // No template linked — fall back to old prefill flow on the accounting page.
     if (!tpl) {
       const bookingAccount = activeCompany?.invoiceBookingAccount || "1930";
       navigate("/economy/accounting", {
@@ -516,36 +521,21 @@ function InvoiceDetailView({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* Paid Confirmation - Create Voucher? */}
+      {/* Paid Confirmation - Automatic booking? */}
       <AlertDialog open={showPaidConfirm} onOpenChange={setShowPaidConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Invoice Paid</AlertDialogTitle>
             <AlertDialogDescription>
-              {templates.length > 0
-                ? "Create a voucher automatically using one of your templates?"
-                : "Do you want to create a voucher for this invoice? You can set up a template under Billing → Templates to make this automatic next time."}
+              {linkedTemplate
+                ? `Use automatic booking with the linked template "${linkedTemplate.name}"?`
+                : "Do you want to create a voucher for this invoice? You can link a template when creating the invoice to make this fully automatic."}
             </AlertDialogDescription>
           </AlertDialogHeader>
-          {templates.length > 0 && (
-            <div className="space-y-2">
-              <Label className="text-sm">Template</Label>
-              <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
-                <SelectTrigger><SelectValue placeholder="Pick a template" /></SelectTrigger>
-                <SelectContent>
-                  {templates.map(t => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name}{t.isDefault ? " (default)" : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => handleMarkPaid(false)}>No</AlertDialogCancel>
             <AlertDialogAction onClick={() => handleMarkPaid(true)}>
-              {templates.length > 0 ? "Yes, Create Voucher" : "Yes, Open Voucher Form"}
+              {linkedTemplate ? "Yes, book automatically" : "Yes, open voucher form"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -597,6 +587,9 @@ export default function BillingPage() {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [editingCustomer, setEditingCustomer] = useState<Customer | undefined>();
   const [editingProduct, setEditingProduct] = useState<Product | undefined>();
+  const [templateFormOpen, setTemplateFormOpen] = useState(false);
+  const [editTemplate, setEditTemplate] = useState<VoucherTemplate | undefined>();
+  const [existingTemplatesOpen, setExistingTemplatesOpen] = useState(false);
 
   // Compute display status: only sent invoices can become overdue
   const getDisplayStatus = (inv: Invoice) => {
@@ -693,7 +686,7 @@ export default function BillingPage() {
 
       {/* Tabs */}
       <Tabs defaultValue="invoices" className="w-full">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="invoices" className="gap-2">
             <Receipt className="h-4 w-4" />
             Invoices ({actualInvoices.length})
@@ -710,15 +703,7 @@ export default function BillingPage() {
             <Package className="h-4 w-4" />
             Products ({products.length})
           </TabsTrigger>
-          <TabsTrigger value="templates" className="gap-2">
-            <FileCog className="h-4 w-4" />
-            Templates ({templates.length})
-          </TabsTrigger>
         </TabsList>
-
-        <TabsContent value="templates" className="space-y-4">
-          <VoucherTemplateManager />
-        </TabsContent>
 
         {/* Customers Tab */}
         <TabsContent value="customers" className="space-y-4">
@@ -884,11 +869,45 @@ export default function BillingPage() {
             <>
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-semibold">Invoices</h2>
-                <Button onClick={() => setShowCreateInvoice(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Invoice
-                </Button>
+                <div className="flex items-center gap-2">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="outline">
+                        <FileCog className="h-4 w-4 mr-2" />
+                        Template
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        onClick={() => { setEditTemplate(undefined); setTemplateFormOpen(true); }}
+                      >
+                        <Plus className="h-4 w-4 mr-2" /> Create new
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={templates.length === 0}
+                        onClick={() => setExistingTemplatesOpen(true)}
+                      >
+                        <Edit className="h-4 w-4 mr-2" /> Edit existing
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                  <Button onClick={() => setShowCreateInvoice(true)}>
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Invoice
+                  </Button>
+                </div>
               </div>
+
+              <TemplateFormDialog
+                open={templateFormOpen}
+                onOpenChange={(o) => { setTemplateFormOpen(o); if (!o) setEditTemplate(undefined); }}
+                template={editTemplate}
+              />
+              <ExistingTemplatesDialog
+                open={existingTemplatesOpen}
+                onOpenChange={setExistingTemplatesOpen}
+                onEdit={(tpl) => { setEditTemplate(tpl); setTemplateFormOpen(true); }}
+              />
 
               {actualInvoices.length === 0 ? (
                 <Card>
