@@ -340,6 +340,7 @@ export function CreateInvoiceDialog({ open, onOpenChange, inline, documentType =
       customerId: customer.id, customerName: customer.name, customerAddress: customer.address,
       issueDate: issueIso, dueDate: format(dueDate, "yyyy-MM-dd"),
       lines: invoiceLines, subtotal, totalVat, total, status: "draft",
+      templateId: selectedTemplateId !== "__none__" ? selectedTemplateId : undefined,
     });
 
     toast.success(`${docLabel} created`);
