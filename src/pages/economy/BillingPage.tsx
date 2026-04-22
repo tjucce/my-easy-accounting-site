@@ -315,8 +315,7 @@ function InvoiceDetailView({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [showSendDialog, setShowSendDialog] = useState(false);
   const [showPaidConfirm, setShowPaidConfirm] = useState(false);
-  const defaultTpl = templates.find(t => t.isDefault) ?? templates[0];
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>(defaultTpl?.id ?? "");
+  const linkedTemplate = invoice.templateId ? templates.find(t => t.id === invoice.templateId) : undefined;
 
   const handleSendManually = () => {
     exportInvoicePDF(invoice, activeCompany ? {
