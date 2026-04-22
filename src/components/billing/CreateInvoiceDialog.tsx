@@ -354,6 +354,25 @@ export function CreateInvoiceDialog({ open, onOpenChange, inline, documentType =
 
   const formContent = (
     <div className="space-y-4">
+      {/* Template selector */}
+      {templates.length > 0 && (
+        <div className="flex items-center gap-2">
+          <Label className="text-xs font-semibold">Voucher template</Label>
+          <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
+            <SelectTrigger className="h-8 text-xs w-[260px]">
+              <FileCog className="h-3.5 w-3.5 mr-1 text-muted-foreground" />
+              <SelectValue placeholder="Don't use template" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__none__">Don't use template</SelectItem>
+              {templates.map((t) => (
+                <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
       {/* Customer + Dates */}
       <div className="flex gap-3">
         <div className="max-w-[180px] space-y-1.5">
