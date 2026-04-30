@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/AuthContext";
+import { useChecklist } from "@/contexts/ChecklistContext";
 
 interface EconomySidebarProps {
   collapsed: boolean;
@@ -42,6 +43,8 @@ const sidebarItems = [
 export function EconomySidebar({ collapsed, onToggle }: EconomySidebarProps) {
   const location = useLocation();
   const { user } = useAuth();
+  const { items: checklistItems } = useChecklist();
+  const activeChecklistCount = checklistItems.filter((i) => !i.done).length;
 
   const navItems = user?.role === "admin"
     ? [...sidebarItems, { name: "Admin Panel", href: "/admin", icon: Shield, description: "Manage users" }]
@@ -112,22 +115,46 @@ export function EconomySidebar({ collapsed, onToggle }: EconomySidebarProps) {
           const Icon = item.icon;
           const isActive = location.pathname === item.href;
 
+          const isChecklist = item.href === "/economy/checklist";
+          const showBadge = isChecklist && activeChecklistCount > 0;
           return (
             <Link
               key={item.href}
               to={item.href}
               onClick={() => handleNavClick(item.href)}
-              className={cn("economy-sidebar-link group", !isExpanded && "justify-center px-0 gap-0", isActive && "active")}
+              className={cn("economy-sidebar-link group relative", !isExpanded && "justify-center px-0 gap-0", isActive && "active")}
               title={collapsed ? item.name : undefined}
               style={{ animationDelay: `${idx * 30}ms` }}
             >
-              <Icon className={cn(
-                "h-5 w-5 shrink-0 transition-transform duration-200",
-                "group-hover:scale-110",
-                isActive && "text-sidebar-primary"
-              )} />
+              <div className="relative shrink-0">
+                <Icon className={cn(
+                  "h-5 w-5 transition-transform duration-200",
+                  "group-hover:scale-110",
+                  isActive && "text-sidebar-primary"
+                )} />
+                {showBadge && (
+                  <span
+                    className={cn(
+                      "absolute -top-1.5 -right-1.5 min-w-[1.1rem] h-[1.1rem] px-1 flex items-center justify-center",
+                      "rounded-full text-[10px] font-bold leading-none",
+                      "bg-gradient-accent text-secondary-foreground shadow-glow",
+                      "ring-2 ring-sidebar"
+                    )}
+                    aria-label={`${activeChecklistCount} active checklist items`}
+                  >
+                    {activeChecklistCount > 99 ? "99+" : activeChecklistCount}
+                  </span>
+                )}
+              </div>
               <div className={cn("flex flex-col transition-opacity duration-200 whitespace-nowrap min-w-0", !isExpanded && "opacity-0 w-0 overflow-hidden")}>
-                <span className="text-sm">{item.name}</span>
+                <span className="text-sm flex items-center gap-2">
+                  {item.name}
+                  {showBadge && isExpanded && (
+                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-gradient-accent text-secondary-foreground shadow-sm">
+                      {activeChecklistCount > 99 ? "99+" : activeChecklistCount}
+                    </span>
+                  )}
+                </span>
                 <span className="text-[11px] text-sidebar-foreground/55">{item.description}</span>
               </div>
             </Link>
