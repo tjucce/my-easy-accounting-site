@@ -237,12 +237,10 @@ export function SmartRulesSettingsDialog({ open, onOpenChange }: SmartRulesSetti
               <p className="text-xs font-semibold text-muted-foreground">Lägg till ny regel</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="acc-num" className="text-xs">Kontonummer (BAS, 4 siffror)</Label>
-                  <Input
-                    id="acc-num"
-                    placeholder="t.ex. 2510"
+                  <Label className="text-xs">Konto (BAS)</Label>
+                  <AccountSelect
                     value={accountNumber}
-                    onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                    onChange={(num) => setAccountNumber(num)}
                   />
                 </div>
                 <div className="space-y-1.5">
