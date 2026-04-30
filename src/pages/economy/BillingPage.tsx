@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { FileText, Users, Package, Plus, Trash2, Edit, Receipt, Eye, X, Calendar, Send, Download, Mail, CheckCircle, DollarSign, FileCog } from "lucide-react";
+import { FileText, Users, Package, Plus, Trash2, Edit, Receipt, Eye, X, Calendar, Send, Download, Mail, CheckCircle, DollarSign, FileCog, Settings, Repeat } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { Input } from "@/components/ui/input";
@@ -52,6 +52,8 @@ import { useAccounting } from "@/contexts/AccountingContext";
 import { TemplateFormDialog, ExistingTemplatesDialog } from "@/components/billing/VoucherTemplateManager";
 import { buildVoucherFromTemplate, isTemplateBalanced } from "@/lib/billing/applyTemplate";
 import { VoucherTemplate } from "@/lib/billing/types";
+import { BillingSettingsDialog, FirstInvoiceNumberPrompt } from "@/components/billing/BillingSettingsDialog";
+import { RecurringInvoiceManager } from "@/components/billing/RecurringInvoiceManager";
 
 // Helper functions for input validation
 function formatPostalCode(value: string): string {
@@ -577,9 +579,9 @@ function InvoiceDetailView({
 
 export default function BillingPage() {
   const { user } = useAuth();
-  const { customers, products, invoices, templates, addCustomer, updateCustomer, deleteCustomer, addProduct, updateProduct, deleteProduct, deleteInvoice, updateInvoiceStatus, convertQuoteToInvoice } = useBilling();
+  const { customers, products, invoices, templates, firstInvoiceNumberSet, addCustomer, updateCustomer, deleteCustomer, addProduct, updateProduct, deleteProduct, deleteInvoice, updateInvoiceStatus, convertQuoteToInvoice } = useBilling();
   const location = useLocation();
-  
+
   const [customerDialogOpen, setCustomerDialogOpen] = useState(false);
   const [productDialogOpen, setProductDialogOpen] = useState(false);
   const [showCreateInvoice, setShowCreateInvoice] = useState(false);
@@ -590,6 +592,10 @@ export default function BillingPage() {
   const [templateFormOpen, setTemplateFormOpen] = useState(false);
   const [editTemplate, setEditTemplate] = useState<VoucherTemplate | undefined>();
   const [existingTemplatesOpen, setExistingTemplatesOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [recurringManagerOpen, setRecurringManagerOpen] = useState(false);
+  const [firstNumberPromptOpen, setFirstNumberPromptOpen] = useState(false);
+  const [invoicePrefill, setInvoicePrefill] = useState<any | undefined>(undefined);
 
   // Compute display status: only sent invoices can become overdue
   const getDisplayStatus = (inv: Invoice) => {
@@ -605,10 +611,26 @@ export default function BillingPage() {
   const quotes = invoices.filter(i => i.documentType === "quote");
 
   useEffect(() => {
-    if ((location.state as any)?.openCreateInvoice) {
+    const state = location.state as any;
+    if (state?.openCreateInvoice) {
+      if (state.invoicePrefill) setInvoicePrefill(state.invoicePrefill);
+      // First-invoice prompt only when there's no prefill (recurring flow already implies the user knows what they're doing).
+      if (!state.invoicePrefill && !firstInvoiceNumberSet) {
+        setFirstNumberPromptOpen(true);
+      } else {
+        setShowCreateInvoice(true);
+      }
+    }
+  }, [location.state, firstInvoiceNumberSet]);
+
+  const handleCreateInvoiceClick = () => {
+    if (!firstInvoiceNumberSet) {
+      setFirstNumberPromptOpen(true);
+    } else {
+      setInvoicePrefill(undefined);
       setShowCreateInvoice(true);
     }
-  }, [location.state]);
+  };
 
   const handleAddCustomer = (data: Omit<Customer, "id" | "companyId" | "createdAt">) => {
     if (editingCustomer) {
@@ -673,15 +695,11 @@ export default function BillingPage() {
   }
 
   return (
-    <div className="space-y-4 animate-fade-in">
+    <div className="space-y-6 animate-fade-in">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-secondary/10 flex items-center justify-center">
-          <FileText className="h-5 w-5 text-secondary" />
-        </div>
-        <div>
-          <h1 className="text-xl font-bold text-foreground">Billing</h1>
-        </div>
+      <div className="space-y-1">
+        <h1 className="text-3xl font-bold gradient-text">Billing</h1>
+        <p className="text-sm text-muted-foreground">Hantera fakturor, offerter, kunder & produkter.</p>
       </div>
 
       {/* Tabs */}
@@ -735,32 +753,32 @@ export default function BillingPage() {
               </CardContent>
             </Card>
           ) : (
-            <div className="grid gap-4 md:grid-cols-2">
+            <div className="grid gap-4 md:grid-cols-2 auto-rows-fr">
               {customers.map((customer) => (
-                <Card key={customer.id}>
+                <Card key={customer.id} className="border-border/60 shadow-card hover:shadow-md hover:border-secondary/30 transition-all hover-lift flex flex-col">
                   <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <CardTitle className="text-lg">{customer.name}</CardTitle>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <CardTitle className="text-lg truncate">{customer.name}</CardTitle>
                         <CardDescription>
                           {customer.type === "company" ? "Company" : "Private Person"}
                           {customer.organizationNumber && ` • ${customer.organizationNumber}`}
                         </CardDescription>
                       </div>
-                      <div className="flex gap-1">
-                        <Button variant="ghost" size="icon" onClick={() => { setEditingCustomer(customer); setCustomerDialogOpen(true); }}>
+                      <div className="flex gap-1 shrink-0">
+                        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => { setEditingCustomer(customer); setCustomerDialogOpen(true); }}>
                           <Edit className="h-4 w-4" />
                         </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDeleteCustomer(customer.id)}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8 hover:bg-destructive/10" onClick={() => handleDeleteCustomer(customer.id)}>
                           <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       </div>
                     </div>
                   </CardHeader>
-                  <CardContent className="text-sm text-muted-foreground">
+                  <CardContent className="text-sm text-muted-foreground flex-1">
                     <p>{customer.address}</p>
                     <p>{customer.postalCode} {customer.city}</p>
-                    {customer.email && <p>{customer.email}</p>}
+                    {customer.email && <p className="truncate">{customer.email}</p>}
                   </CardContent>
                 </Card>
               ))}
@@ -847,9 +865,13 @@ export default function BillingPage() {
           {showCreateInvoice && (
             <CreateInvoiceDialog
               open={showCreateInvoice}
-              onOpenChange={setShowCreateInvoice}
+              onOpenChange={(o) => {
+                setShowCreateInvoice(o);
+                if (!o) setInvoicePrefill(undefined);
+              }}
               inline
               documentType="invoice"
+              prefill={invoicePrefill}
               onInvoiceCreated={(inv) => setSelectedInvoice(inv)}
             />
           )}
@@ -870,6 +892,14 @@ export default function BillingPage() {
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-semibold">Invoices</h2>
                 <div className="flex items-center gap-2">
+                  <Button variant="outline" onClick={() => setSettingsOpen(true)}>
+                    <Settings className="h-4 w-4 mr-2" />
+                    Settings
+                  </Button>
+                  <Button variant="outline" onClick={() => setRecurringManagerOpen(true)}>
+                    <Repeat className="h-4 w-4 mr-2" />
+                    Recurring
+                  </Button>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <Button variant="outline">
@@ -891,7 +921,7 @@ export default function BillingPage() {
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
-                  <Button onClick={() => setShowCreateInvoice(true)}>
+                  <Button onClick={handleCreateInvoiceClick}>
                     <Plus className="h-4 w-4 mr-2" />
                     Create Invoice
                   </Button>
@@ -907,6 +937,13 @@ export default function BillingPage() {
                 open={existingTemplatesOpen}
                 onOpenChange={setExistingTemplatesOpen}
                 onEdit={(tpl) => { setEditTemplate(tpl); setTemplateFormOpen(true); }}
+              />
+              <BillingSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+              <RecurringInvoiceManager open={recurringManagerOpen} onOpenChange={setRecurringManagerOpen} />
+              <FirstInvoiceNumberPrompt
+                open={firstNumberPromptOpen}
+                onOpenChange={setFirstNumberPromptOpen}
+                onConfirmed={() => setShowCreateInvoice(true)}
               />
 
               {actualInvoices.length === 0 ? (

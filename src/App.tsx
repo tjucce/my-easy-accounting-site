@@ -12,11 +12,18 @@ import { ReceiptsProvider } from "@/contexts/ReceiptsContext";
 import { VatProvider } from "@/contexts/VatContext";
 import { VatPeriodLockProvider } from "@/contexts/VatPeriodLockContext";
 import { ChecklistProvider } from "@/contexts/ChecklistContext";
+import { RecurringBillingProvider } from "@/contexts/RecurringBillingContext";
+import { SmartChecklistProvider } from "@/contexts/SmartChecklistContext";
 import { PublicLayout } from "@/components/layout/PublicLayout";
 import { EconomyLayout } from "@/components/layout/EconomyLayout";
 import { ScrollToTop } from "@/components/ScrollToTop";
 import { RequireCompany } from '@/components/RequireCompany';
 import { GlobalTakeoverListener } from "@/components/company/GlobalTakeoverListener";
+import { MobileGate } from "@/components/mobile/MobileGate";
+import { ViewModeProvider } from "@/contexts/ViewModeContext";
+import { ViewModeSwitch } from "@/components/ViewModeSwitch";
+import MobileLanding from "./pages/mobile/MobileLanding";
+import MobileUpload from "./pages/mobile/MobileUpload";
 
 // Pages
 import Index from "./pages/Index";
@@ -56,13 +63,22 @@ const App = () => (
                 <VatProvider>
                 <VatPeriodLockProvider>
                 <ChecklistProvider>
+                <RecurringBillingProvider>
+                <SmartChecklistProvider>
                 <TooltipProvider>
                   <Toaster />
                   <Sonner />
                   <BrowserRouter>
-                    <ScrollToTop />
-                    <GlobalTakeoverListener />
+                    <ViewModeProvider>
+                      <ScrollToTop />
+                      <GlobalTakeoverListener />
+                      <MobileGate />
+                      <ViewModeSwitch />
                     <Routes>
+                      {/* Mobile-only routes */}
+                      <Route path="/mobile" element={<MobileLanding />} />
+                      <Route path="/mobile/upload" element={<MobileUpload />} />
+
                       {/* Public pages with header/footer */}
                       <Route element={<PublicLayout />}>
                         <Route path="/" element={<Index />} />
@@ -109,8 +125,11 @@ const App = () => (
                       {/* Catch-all */}
                       <Route path="*" element={<NotFound />} />
                     </Routes>
+                    </ViewModeProvider>
                   </BrowserRouter>
                 </TooltipProvider>
+                </SmartChecklistProvider>
+                </RecurringBillingProvider>
                 </ChecklistProvider>
                   </VatPeriodLockProvider>
                 </VatProvider>
