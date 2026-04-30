@@ -248,7 +248,7 @@ export default function ChecklistPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </motion.div>
+    </div>
   );
 }
 
