@@ -141,7 +141,7 @@ export default function ChecklistPage() {
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.2 }}
           >
-            <Card className="p-3 flex items-center gap-2 shadow-md border-secondary/40">
+            <Card className="p-3 flex items-center gap-2 shadow-lg border-secondary/30 bg-card/60 backdrop-blur-xl rounded-2xl">
               <Input
                 ref={inputRef}
                 value={newText}
@@ -282,21 +282,22 @@ function Section({ title, count, open, onOpenChange, children, accent = "seconda
     <Collapsible open={open} onOpenChange={onOpenChange}>
       <Card
         className={cn(
-          "relative overflow-hidden border-border/60 shadow-card hover:shadow-md transition-shadow",
-          "before:content-[''] before:absolute before:top-0 before:left-0 before:w-full before:h-[2px] before:opacity-70",
+          "relative overflow-hidden border-border/40 shadow-lg hover:shadow-xl transition-all rounded-2xl",
+          "bg-card/55 backdrop-blur-xl",
+          "before:content-[''] before:absolute before:top-0 before:left-0 before:w-full before:h-[2px] before:opacity-80",
           accentClass
         )}
       >
         <CollapsibleTrigger asChild>
-          <button className="w-full flex items-center justify-between p-4 hover:bg-muted/40 transition-colors">
+          <button className="w-full flex items-center justify-between p-4 hover:bg-white/30 dark:hover:bg-white/5 transition-colors">
             <div className="flex items-center gap-3">
               <span className="font-semibold text-foreground">{title}</span>
               <span
                 className={cn(
-                  "text-xs px-2 py-0.5 rounded-full font-medium",
+                  "text-xs px-2 py-0.5 rounded-full font-medium backdrop-blur-sm border",
                   accent === "success"
-                    ? "bg-success/10 text-success"
-                    : "bg-secondary/10 text-secondary"
+                    ? "bg-success/15 text-success border-success/20"
+                    : "bg-secondary/15 text-secondary border-secondary/20"
                 )}
               >
                 {count}
@@ -311,7 +312,7 @@ function Section({ title, count, open, onOpenChange, children, accent = "seconda
           </button>
         </CollapsibleTrigger>
         <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
-          <div className="px-4 pb-4 border-t border-border/60 pt-3">{children}</div>
+          <div className="px-4 pb-4 border-t border-border/40 pt-3">{children}</div>
         </CollapsibleContent>
       </Card>
     </Collapsible>
@@ -392,8 +393,8 @@ function Row({ item, onToggle, onUpdate, onDelete, onItemClick }: RowProps) {
       exit={{ opacity: 0, scale: 0.96 }}
       transition={{ duration: 0.2 }}
       className={cn(
-        "group flex items-center gap-3 p-3 rounded-lg border border-border/60 bg-card hover:border-secondary/40 hover:shadow-sm transition-all",
-        item.resolvedAt && !item.done && "border-success/40 bg-success/5"
+        "group flex items-center gap-3 p-3 rounded-xl border border-border/40 bg-card/55 backdrop-blur-md hover:border-secondary/40 hover:bg-card/75 hover:shadow-md transition-all",
+        item.resolvedAt && !item.done && "border-success/40 bg-success/10"
       )}
     >
       <div className="flex-1 min-w-0">
