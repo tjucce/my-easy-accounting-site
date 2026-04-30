@@ -262,30 +262,19 @@ interface SectionProps {
 }
 
 function Section({ title, count, open, onOpenChange, children, accent = "secondary" }: SectionProps) {
-  const accentClass = accent === "success"
-    ? "before:bg-gradient-to-r before:from-success before:to-success/40"
-    : "before:bg-gradient-to-r before:from-secondary before:to-accent/40";
-
   return (
     <Collapsible open={open} onOpenChange={onOpenChange}>
-      <Card
-        className={cn(
-          "relative overflow-hidden border-border/40 shadow-lg hover:shadow-xl transition-all rounded-2xl",
-          "bg-card/55 backdrop-blur-xl",
-          "before:content-[''] before:absolute before:top-0 before:left-0 before:w-full before:h-[2px] before:opacity-80",
-          accentClass
-        )}
-      >
+      <Card className="border-border bg-card overflow-hidden">
         <CollapsibleTrigger asChild>
-          <button className="w-full flex items-center justify-between p-4 hover:bg-white/30 dark:hover:bg-white/5 transition-colors">
-            <div className="flex items-center gap-3">
-              <span className="font-semibold text-foreground">{title}</span>
+          <button className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/30 transition-colors">
+            <div className="flex items-center gap-2">
+              <span className="text-base font-semibold text-foreground">{title}</span>
               <span
                 className={cn(
-                  "text-xs px-2 py-0.5 rounded-full font-medium backdrop-blur-sm border",
+                  "text-xs px-2 py-0.5 rounded-full font-medium",
                   accent === "success"
-                    ? "bg-success/15 text-success border-success/20"
-                    : "bg-secondary/15 text-secondary border-secondary/20"
+                    ? "bg-success/10 text-success"
+                    : "bg-secondary/10 text-secondary"
                 )}
               >
                 {count}
@@ -293,14 +282,14 @@ function Section({ title, count, open, onOpenChange, children, accent = "seconda
             </div>
             <ChevronDown
               className={cn(
-                "h-4 w-4 text-muted-foreground transition-transform duration-300",
+                "h-4 w-4 text-muted-foreground transition-transform duration-200",
                 open && "rotate-180"
               )}
             />
           </button>
         </CollapsibleTrigger>
         <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
-          <div className="px-4 pb-4 border-t border-border/40 pt-3">{children}</div>
+          <div className="px-4 pb-4 border-t border-border pt-3">{children}</div>
         </CollapsibleContent>
       </Card>
     </Collapsible>
@@ -381,8 +370,8 @@ function Row({ item, onToggle, onUpdate, onDelete, onItemClick }: RowProps) {
       exit={{ opacity: 0, scale: 0.96 }}
       transition={{ duration: 0.2 }}
       className={cn(
-        "group flex items-center gap-3 p-3 rounded-xl border border-border/40 bg-card/55 backdrop-blur-md hover:border-secondary/40 hover:bg-card/75 hover:shadow-md transition-all",
-        item.resolvedAt && !item.done && "border-success/40 bg-success/10"
+        "group flex items-center gap-3 px-3 py-2.5 rounded-md border border-border bg-card hover:bg-muted/30 transition-colors",
+        item.resolvedAt && !item.done && "border-success/40 bg-success/5"
       )}
     >
       <div className="flex-1 min-w-0">
