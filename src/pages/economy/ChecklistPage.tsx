@@ -81,22 +81,11 @@ export default function ChecklistPage() {
   };
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 8 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="space-y-6 w-full relative"
-    >
-      {/* Ambient liquid-glass backdrop blobs */}
-      <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden">
-        <div className="absolute -top-24 -left-16 h-72 w-72 rounded-full bg-secondary/20 blur-3xl" />
-        <div className="absolute top-32 right-0 h-80 w-80 rounded-full bg-primary/15 blur-3xl" />
-        <div className="absolute bottom-0 left-1/3 h-64 w-64 rounded-full bg-accent/15 blur-3xl" />
-      </div>
-
-      <div className="flex items-center justify-between gap-4">
+    <div className="space-y-6 animate-fade-in">
+      {/* Header — matches BillingPage / other economy pages */}
+      <div className="flex items-start justify-between gap-4">
         <div className="space-y-1 min-w-0">
-          <h1 className="text-3xl font-bold gradient-text">Checklist</h1>
+          <h1 className="text-3xl font-bold text-foreground">Checklist</h1>
           <p className="text-sm text-muted-foreground">
             Hantera saker som behöver göras. Bocka av när de är klara.
           </p>
@@ -107,18 +96,17 @@ export default function ChecklistPage() {
             variant="outline"
             onClick={() => setSmartSettingsOpen(true)}
             title="Smart-regler"
-            className="bg-card/60 backdrop-blur-md border-border/50 hover:bg-card/80 shadow-sm"
           >
             <Sparkles className="h-4 w-4 mr-2" />
             Smart-regler
           </Button>
           <Button
-            size="icon"
+            size="sm"
             onClick={() => setAdding(true)}
             title="Lägg till"
-            className="shadow-md hover:shadow-glow transition-shadow backdrop-blur-md"
           >
-            <Plus className="h-4 w-4" />
+            <Plus className="h-4 w-4 mr-2" />
+            Add Item
           </Button>
         </div>
       </div>
@@ -141,7 +129,7 @@ export default function ChecklistPage() {
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.2 }}
           >
-            <Card className="p-3 flex items-center gap-2 shadow-lg border-secondary/30 bg-card/60 backdrop-blur-xl rounded-2xl">
+            <Card className="p-3 flex items-center gap-2 border-border">
               <Input
                 ref={inputRef}
                 value={newText}
