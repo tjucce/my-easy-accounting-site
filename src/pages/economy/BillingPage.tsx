@@ -1085,6 +1085,14 @@ export default function BillingPage() {
             </>
           )}
         </TabsContent>
+
+        {/* Settings Tab */}
+        <TabsContent value="settings" className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-semibold">Settings</h2>
+          </div>
+          <BillingSettingsPanel />
+        </TabsContent>
       </Tabs>
     </div>
   );
