@@ -4,6 +4,100 @@ import { useAuth } from "./AuthContext";
 import { authService } from "@/services/auth";
 import { parseSIEFile, generateSIEFile, convertSIEVouchersToInternal, convertSIEAccountsToBAS } from "@/lib/sie";
 
+// ---- Storage helpers (handle localStorage quota for vouchers w/ base64 attachments) ----
+const ATTACH_KEY_PREFIX = "accountpro_attachment_";
+
+function isQuotaError(err: unknown): boolean {
+  return (
+    err instanceof DOMException &&
+    (err.name === "QuotaExceededError" ||
+      err.name === "NS_ERROR_DOM_QUOTA_REACHED" ||
+      err.code === 22 ||
+      err.code === 1014)
+  );
+}
+
+function storeAttachmentExternally(companyId: string, voucherId: string, attId: string, dataUrl: string): boolean {
+  try {
+    localStorage.setItem(`${ATTACH_KEY_PREFIX}${companyId}_${voucherId}_${attId}`, dataUrl);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function loadExternalAttachment(companyId: string, voucherId: string, attId: string): string | null {
+  try {
+    return localStorage.getItem(`${ATTACH_KEY_PREFIX}${companyId}_${voucherId}_${attId}`);
+  } catch {
+    return null;
+  }
+}
+
+function persistAccounts(companyId: string, accounts: BASAccount[], basNumbers: Set<string>): void {
+  // Only store custom (non-BAS) accounts to keep payload tiny and avoid quota errors.
+  const custom = accounts.filter((a) => !basNumbers.has(a.number));
+  const key = `accountpro_accounts_${companyId}`;
+  try {
+    localStorage.setItem(key, JSON.stringify(custom));
+  } catch (err) {
+    console.error("Failed to persist accounts:", err);
+    try { localStorage.removeItem(key); } catch {}
+  }
+}
+
+function persistVouchers(companyId: string, vouchers: any[]): void {
+  const key = `accountpro_vouchers_${companyId}`;
+  try {
+    localStorage.setItem(key, JSON.stringify(vouchers));
+    return;
+  } catch (err) {
+    if (!isQuotaError(err)) {
+      console.error("Failed to persist vouchers:", err);
+      return;
+    }
+  }
+
+  // Quota exceeded: move attachment dataUrls to separate keys and persist a slim copy.
+  const slim = vouchers.map((v: any) => {
+    if (!v.attachments || v.attachments.length === 0) return v;
+    const slimAttachments = v.attachments.map((a: any) => {
+      if (a.dataUrl) {
+        const stored = storeAttachmentExternally(companyId, v.id, a.id, a.dataUrl);
+        if (stored) {
+          const { dataUrl, ...rest } = a;
+          return { ...rest, _external: true };
+        }
+      }
+      return a;
+    });
+    return { ...v, attachments: slimAttachments };
+  });
+
+  try {
+    localStorage.setItem(key, JSON.stringify(slim));
+  } catch (err) {
+    console.error("Vouchers still exceed quota after externalizing attachments:", err);
+  }
+}
+
+function rehydrateVouchers(companyId: string, vouchers: any[]): any[] {
+  return vouchers.map((v: any) => {
+    if (!v.attachments || v.attachments.length === 0) return v;
+    const attachments = v.attachments.map((a: any) => {
+      if (a._external && !a.dataUrl) {
+        const dataUrl = loadExternalAttachment(companyId, v.id, a.id);
+        if (dataUrl) {
+          const { _external, ...rest } = a;
+          return { ...rest, dataUrl };
+        }
+      }
+      return a;
+    });
+    return { ...v, attachments };
+  });
+}
+
 export interface VoucherLine {
   id: string;
   accountNumber: string;
@@ -145,9 +239,10 @@ export function AccountingProvider({ children }: { children: ReactNode }) {
     const mergedAccounts = [...visibleStandardAccounts, ...customAccounts].sort((a, b) => a.number.localeCompare(b.number));
 
     setAccounts(mergedAccounts);
-    localStorage.setItem(`accountpro_accounts_${companyId}`, JSON.stringify(mergedAccounts));
+    persistAccounts(companyId, mergedAccounts, basAccountNumbers);
 
     let initialVouchers: Voucher[] = storedVouchers ? (JSON.parse(storedVouchers) as Voucher[]) : [];
+    initialVouchers = rehydrateVouchers(companyId, initialVouchers) as Voucher[];
     let initialNextNumber = storedNextNumber ? parseInt(storedNextNumber) : 1;
 
     // Seed demo data for the hardcoded test account so all reports populate.
@@ -188,7 +283,7 @@ export function AccountingProvider({ children }: { children: ReactNode }) {
         });
         initialVouchers = seeded;
         initialNextNumber = voucherNo;
-        localStorage.setItem(`accountpro_vouchers_${companyId}`, JSON.stringify(seeded));
+        persistVouchers(companyId, seeded);
         localStorage.setItem(`accountpro_next_voucher_${companyId}`, String(voucherNo));
       }
     }
@@ -243,8 +338,8 @@ export function AccountingProvider({ children }: { children: ReactNode }) {
         setAccounts(nextAccounts);
         setVouchers(dbVouchers);
         setNextVoucherNumber(converted.nextVoucherNumber);
-        localStorage.setItem(`accountpro_accounts_${requestedCompanyId}`, JSON.stringify(nextAccounts));
-        localStorage.setItem(`accountpro_vouchers_${requestedCompanyId}`, JSON.stringify(dbVouchers));
+        persistAccounts(requestedCompanyId, nextAccounts, basAccountNumbers);
+        persistVouchers(requestedCompanyId, dbVouchers);
         localStorage.setItem(`accountpro_next_voucher_${requestedCompanyId}`, converted.nextVoucherNumber.toString());
       })
       .catch((error) => {
@@ -262,7 +357,8 @@ export function AccountingProvider({ children }: { children: ReactNode }) {
   const saveAccounts = (newAccounts: BASAccount[]) => {
     setAccounts(newAccounts);
     if (companyId) {
-      localStorage.setItem(`accountpro_accounts_${companyId}`, JSON.stringify(newAccounts));
+      const basNumbers = new Set(getLatestBASAccounts("K3").map((a) => a.number));
+      persistAccounts(companyId, newAccounts, basNumbers);
     }
   };
 
@@ -270,7 +366,7 @@ export function AccountingProvider({ children }: { children: ReactNode }) {
     setVouchers(newVouchers);
     setNextVoucherNumber(newNextNumber);
     if (companyId) {
-      localStorage.setItem(`accountpro_vouchers_${companyId}`, JSON.stringify(newVouchers));
+      persistVouchers(companyId, newVouchers);
       localStorage.setItem(`accountpro_next_voucher_${companyId}`, newNextNumber.toString());
     }
   };
