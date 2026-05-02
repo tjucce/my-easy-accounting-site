@@ -311,8 +311,7 @@ export default function SettingsPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <div className="min-h-screen flex flex-col">
-        <Header />
+      <div className="flex flex-col">
         {activeCompany && user && (
           <TakeoverListener companyId={activeCompany.id} userId={Number(user.id)} pollMs={2000} />
         )}
@@ -681,7 +680,7 @@ export default function SettingsPage() {
             </Tabs>
           </div>
         </main>
-        <Footer />
+        
       </div>
 
       {/* Delete Company - Confirm Dialog */}
