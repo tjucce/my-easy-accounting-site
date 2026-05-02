@@ -22,7 +22,7 @@ import { useAuditTrail } from "@/contexts/AuditTrailContext";
 import { authService } from "@/services/auth";
 import { toast } from "sonner";
 import { Building, Save, ArrowLeft, Plus, Trash2, Check, Upload, Download, User, Calendar, Lock, Unlock } from "lucide-react";
-import { Header } from "@/components/layout/Header";
+
 import { Footer } from "@/components/layout/Footer";
 import { TakeoverPopup } from "@/components/company/TakeoverPopup";
 import { TakeoverListener } from "@/components/company/TakeoverListener";
