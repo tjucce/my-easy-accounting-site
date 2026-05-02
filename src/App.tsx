@@ -118,6 +118,10 @@ const App = () => (
                         <Route path="/company" element={<SettingsPage />} />
                       </Route>
 
+                      {/* Auth */}
+                      <Route path="/login" element={<LoginPage />} />
+                      <Route path='/company-gate' element={<CompanyGate />} />
+
                       {/* Catch-all */}
                       <Route path="*" element={<NotFound />} />
                     </Routes>
