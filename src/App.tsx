@@ -16,6 +16,7 @@ import { RecurringBillingProvider } from "@/contexts/RecurringBillingContext";
 import { SmartChecklistProvider } from "@/contexts/SmartChecklistContext";
 import { PublicLayout } from "@/components/layout/PublicLayout";
 import { EconomyLayout } from "@/components/layout/EconomyLayout";
+import { SidebarShell } from "@/components/layout/SidebarShell";
 import { ScrollToTop } from "@/components/ScrollToTop";
 import { RequireCompany } from '@/components/RequireCompany';
 import { GlobalTakeoverListener } from "@/components/company/GlobalTakeoverListener";
