@@ -23,7 +23,7 @@ import { authService } from "@/services/auth";
 import { toast } from "sonner";
 import { Building, Save, ArrowLeft, Plus, Trash2, Check, Upload, Download, User, Calendar, Lock, Unlock } from "lucide-react";
 
-import { Footer } from "@/components/layout/Footer";
+
 import { TakeoverPopup } from "@/components/company/TakeoverPopup";
 import { TakeoverListener } from "@/components/company/TakeoverListener";
 import { JoinRequestsPanel } from "@/components/company/JoinRequestsPanel";
