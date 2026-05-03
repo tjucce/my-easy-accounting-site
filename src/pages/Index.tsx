@@ -66,6 +66,12 @@ const modules = [
 ];
 
 export default function Index() {
+  const { user } = useAuth();
+
+  if (user) {
+    return <Navigate to="/economy" replace />;
+  }
+
   return (
     <div className="flex flex-col">
       {/* Hero Section */}
