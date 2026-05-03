@@ -41,7 +41,7 @@ export function SidebarShell() {
         )}
       >
         {/* Top bar */}
-        <div className="sticky top-0 z-30 flex items-center justify-between px-6 py-3 bg-background/80 backdrop-blur-sm border-b border-border/40">
+        <div className="sticky top-0 z-30 flex items-center justify-between px-6 py-3 bg-background/80 backdrop-blur-sm">
           <div className="flex-1" />
           <Link
             to="/economy"
