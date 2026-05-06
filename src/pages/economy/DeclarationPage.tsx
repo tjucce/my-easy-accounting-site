@@ -115,16 +115,18 @@ function PlusMinusDeclarationField({
 
   return (
     <div className="border-b border-border/50 last:border-b-0">
-      <div className="px-2 pt-1.5 pb-0.5">
-        <span className="text-xs text-foreground">{label}</span>
-      </div>
-      <div className="flex items-center justify-end gap-2 py-1 px-2">
-        <span className="text-[10px] text-green-600 font-medium shrink-0">+</span>
-        <DeclarationFieldInput id={`${id}_plus`} result={plusResult} label={label} />
-      </div>
-      <div className="flex items-center justify-end gap-2 py-1 px-2 pb-1.5">
-        <span className="text-[10px] text-red-500 font-medium shrink-0">−</span>
-        <DeclarationFieldInput id={`${id}_minus`} result={minusResult} label={label} />
+      <div className="flex items-start justify-between gap-2 py-1.5 px-2">
+        <label className="text-xs text-foreground flex-1 pt-1">{label}</label>
+        <div className="flex flex-col gap-0.5 shrink-0">
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground font-medium shrink-0">+</span>
+            <DeclarationFieldInput id={`${id}_plus`} result={plusResult} label={label} />
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground font-medium shrink-0">−</span>
+            <DeclarationFieldInput id={`${id}_minus`} result={minusResult} label={label} />
+          </div>
+        </div>
       </div>
     </div>
   );
