@@ -2,7 +2,12 @@
 // Maps INK2R / INK2S / sida 1 fields to BAS accounts via exact BAS 2026 -> INK2 mapping.
 // Important: this replaces broad account ranges with exact account-number mapping.
 // Important: field.value is the real signed declaration value.
-// Example: 3.5 = -45, 3.26 = 509, 3.27 = -509.
+// Example:
+// 3.1  = 63
+// 3.5  = -45
+// 3.12 = -5 or +5 depending on actual result
+// 3.26 = positive profit
+// 3.27 = negative loss
 
 import type { Voucher } from "@/contexts/AccountingContexts";
 import type { BASAccount } from "@/lib/bas-accounts";
@@ -117,7 +122,12 @@ function getOrCreateField(
   note = "Summeras från exakt BAS 2026 → INK2-koppling."
 ): FieldResult {
   if (!fields[id]) {
-    fields[id] = { value: 0, breakdown: [], source: "accounts", note };
+    fields[id] = {
+      value: 0,
+      breakdown: [],
+      source: "accounts",
+      note,
+    };
   }
 
   return fields[id];
@@ -177,19 +187,23 @@ function aggregateVoucherAccounts(
 
 function declarationValueForField(fieldId: string, accountBalance: number): number {
   /*
-    Plusfält ska vara positiva:
-    Exempel: 3.1, 3.16, 3.20, 3.21
+    Plusfält ska alltid bli positiva.
+    Exempel:
+    3.1, 3.16, 3.20, 3.21
 
-    Minusfält ska vara negativa:
-    Exempel: 3.5, 3.7, 3.18, 3.25
+    Minusfält ska alltid bli negativa.
+    Exempel:
+    3.5, 3.7, 3.18, 3.25
 
-    ±-fält ska följa verkligt utfall:
-    Exempel: 3.12, 3.13, 3.23, 3.24
+    ±-fält ska behålla sitt riktiga tecken.
+    De ska INTE inverteras här.
 
-    För kontoklass 8 är debetsaldo normalt kostnad/förlust.
-    calculateBalance brukar då ge positivt saldo vid debetöverskott.
-    I deklarationen ska det bli minus.
-    Därför vänder vi tecknet för ±-fält.
+    Exempel:
+    f3_12.value = -5  -> UI kan placera 5 i minusfältet
+    f3_12.value = 5   -> UI kan placera 5 i plusfältet
+
+    Detta gäller:
+    3.12, 3.13, 3.14, 3.15, 3.23, 3.24, 4.9 och 4.10.
   */
 
   if (PLUS_FIELDS.has(fieldId)) {
@@ -201,7 +215,7 @@ function declarationValueForField(fieldId: string, accountBalance: number): numb
   }
 
   if (PLUS_MINUS_FIELDS.has(fieldId)) {
-    return -accountBalance;
+    return accountBalance;
   }
 
   return accountBalance;
@@ -252,7 +266,6 @@ function addMappedAccount(
   if (!fieldId) return;
 
   const declarationAmount = declarationValueForField(fieldId, aggregate.balance);
-
   addToField(fields, fieldId, fullLabel, declarationAmount);
 }
 
@@ -269,14 +282,20 @@ function buildIncomeStatementResult(
 ): Record<"f3_26" | "f3_27", FieldResult> {
   /*
     Alla fält har redan rätt deklarationstecken.
+
     Därför ska vi INTE göra:
     intäkter - kostnader - skatt
 
-    Vi ska bara summera alla signerade fält:
+    Vi ska bara summera fältens riktiga value:
     3.1 + 3.2 + ... + 3.25
   */
 
-  const rorelseintakter = sum(fields, ["f3_1", "f3_2", "f3_3", "f3_4"]);
+  const rorelseintakter = sum(fields, [
+    "f3_1",
+    "f3_2",
+    "f3_3",
+    "f3_4",
+  ]);
 
   const rorelsekostnader = sum(fields, [
     "f3_5",
@@ -298,7 +317,10 @@ function buildIncomeStatementResult(
     "f3_18",
   ]);
 
-  const koncernbidrag = sum(fields, ["f3_19", "f3_20"]);
+  const koncernbidrag = sum(fields, [
+    "f3_19",
+    "f3_20",
+  ]);
 
   const bokslutsdispositioner = sum(fields, [
     "f3_21",
@@ -364,7 +386,9 @@ function buildTaxAdjustments(
   /*
     3.26 är positiv vid vinst.
     3.27 är negativ vid förlust.
-    Därför summeras de.
+
+    Därför blir årets resultat:
+    3.26 + 3.27
   */
   const aretsResultat = get(fields, "f3_26") + get(fields, "f3_27");
 
@@ -404,8 +428,9 @@ function buildTaxAdjustments(
 
   /*
     4.3a är en plusjustering.
-    3.25 är negativt i resultaträkningen, men i 4.3a ska samma skatt läggas tillbaka
-    och blir därför positiv.
+
+    3.25 är negativt i resultaträkningen eftersom skatt är kostnad.
+    I 4.3a ska skatten återläggas, alltså bli positiv.
   */
   const f4_3a: FieldResult = {
     value: Math.abs(get(fields, "f3_25")),
@@ -427,16 +452,20 @@ function buildTaxAdjustments(
   };
 
   /*
-    Även INK2S ska räknas genom att summera fältens riktiga teckenvärde.
+    INK2S räknas också genom att summera fältens riktiga teckenvärde.
+
     Exempel:
-    4.1 = positivt
-    4.2 = negativt
-    4.3 = positivt
-    4.4 = negativt
-    4.5 = negativt
-    4.6 = positivt
-    4.9 / 4.10 = kan vara positivt eller negativt
+    4.1  = positivt
+    4.2  = negativt
+    4.3  = positivt
+    4.4  = negativt
+    4.5  = negativt
+    4.6  = positivt
+    4.9  = plus/minus
+    4.10 = plus/minus
     4.14a = negativt
+    4.14b = positivt
+    4.14c = positivt
   */
   const skattemassigtResultat = sum(taxFields, [
     "f4_1",
@@ -564,7 +593,15 @@ function buildTaxAdjustments(
     note: "Hämtas från 4.16.",
   };
 
-  return { f1_1, f1_2, f4_1, f4_2, f4_3a, f4_15, f4_16 };
+  return {
+    f1_1,
+    f1_2,
+    f4_1,
+    f4_2,
+    f4_3a,
+    f4_15,
+    f4_16,
+  };
 }
 
 export function calculateDeclarationFields(
