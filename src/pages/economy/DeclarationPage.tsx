@@ -455,10 +455,10 @@ export default function DeclarationPage() {
             <DeclarationField label="3.11 Övriga rörelsekostnader" id="f3_11" sign="−" result={F("f3_11")} />
           </SectionCard>
           <SectionCard title="Finansiella poster">
-            <DeclarationField label="3.12 Resultat från andelar i koncernföretag" id="f3_12" sign="±" result={F("f3_12")} />
-            <DeclarationField label="3.13 Resultat från andelar i intresseföretag och gemensamt styrda företag" id="f3_13" sign="±" result={F("f3_13")} />
-            <DeclarationField label="3.14 Resultat från övriga företag som det finns ett ägarintresse i" id="f3_14" sign="±" result={F("f3_14")} />
-            <DeclarationField label="3.15 Resultat från övriga finansiella anläggningstillgångar" id="f3_15" sign="±" result={F("f3_15")} />
+            <PlusMinusDeclarationField label="3.12 Resultat från andelar i koncernföretag" id="f3_12" result={F("f3_12")} />
+            <PlusMinusDeclarationField label="3.13 Resultat från andelar i intresseföretag och gemensamt styrda företag" id="f3_13" result={F("f3_13")} />
+            <PlusMinusDeclarationField label="3.14 Resultat från övriga företag som det finns ett ägarintresse i" id="f3_14" result={F("f3_14")} />
+            <PlusMinusDeclarationField label="3.15 Resultat från övriga finansiella anläggningstillgångar" id="f3_15" result={F("f3_15")} />
           </SectionCard>
         </div>
         <div className="space-y-4">
