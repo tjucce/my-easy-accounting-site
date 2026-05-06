@@ -1,9 +1,11 @@
 // Declaration field calculator
 // Maps INK2R / INK2S / sida 1 fields to BAS accounts via exact BAS 2026 -> INK2 mapping.
-// Important:
-// - Formulas use declaration sign logic: + rows are added and − rows are subtracted.
-// - Former ± fields are split into separate _plus and _minus calculation rows.
-// - The calculator does not force UI/display values to be absolute; display formatting belongs in the page/component layer.
+//
+// Viktigt:
+// - Alla fältvärden som visas i deklarationen hålls som positiva belopp i `value`.
+// - Beräkningar använder `signedValue`, dvs deklarationens teckenlogik:
+//   plusfält = positiv effekt, minusfält = negativ effekt, ±-fält = plus/minus beroende på nettot.
+// - Det gör att UI:t kan visa belopp utan minustecken samtidigt som årets resultat och INK2S räknas rätt.
 
 import type { Voucher } from "@/contexts/AccountingContexts";
 import type { BASAccount } from "@/lib/bas-accounts";
@@ -16,11 +18,10 @@ export interface BreakdownEntry {
 }
 
 export interface FieldResult {
-  /**
-   * Stored field value. It may be positive or negative depending on source/calculation.
-   * Formula code below applies declaration row signs explicitly and does not rely on UI formatting.
-   */
+  /** Positivt belopp för visning i deklarationsrutan. */
   value: number;
+  /** Belopp med deklarationens faktiska beräkningstecken. */
+  signedValue?: number;
   breakdown: BreakdownEntry[];
   source: "accounts" | "formula" | "manual";
   note?: string;
@@ -34,46 +35,90 @@ interface AccountAggregate {
   balance: number;
 }
 
-interface PendingSignedGroup {
-  value: number;
-  breakdown: BreakdownEntry[];
-  note: string;
-}
+type FieldSign = "+" | "-" | "±" | "none";
 
-const EPSILON = 0.005;
+const FIELD_SIGNS: Record<string, FieldSign> = {
+  // Sida 1
+  f1_1: "+",
+  f1_2: "-",
 
-const INK2R_PLUS_MINUS_FIELDS = new Set(["3.12", "3.13", "3.14", "3.15", "3.23", "3.24"]);
+  // INK2R resultaträkning
+  f3_1: "+",
+  f3_2: "+",
+  f3_3: "+",
+  f3_4: "+",
+  f3_5: "-",
+  f3_6: "-",
+  f3_7: "-",
+  f3_8: "-",
+  f3_9: "-",
+  f3_10: "-",
+  f3_11: "-",
+  f3_12: "±",
+  f3_13: "±",
+  f3_14: "±",
+  f3_15: "±",
+  f3_16: "+",
+  f3_17: "-",
+  f3_18: "-",
+  f3_19: "-",
+  f3_20: "+",
+  f3_21: "+",
+  f3_22: "-",
+  f3_23: "±",
+  f3_24: "±",
+  f3_25: "-",
+  f3_26: "+",
+  f3_27: "-",
 
-const INK2R_RESULT_PLUS_FIELDS = new Set([
-  "3.1",
-  "3.2",
-  "3.3",
-  "3.4",
-  "3.16",
-  "3.20",
-  "3.21",
-  "3.26",
-]);
+  // INK2S
+  f4_1: "+",
+  f4_2: "-",
+  f4_3a: "+",
+  f4_3b: "+",
+  f4_3c: "+",
+  f4_4a: "-",
+  f4_4b: "-",
+  f4_5a: "-",
+  f4_5b: "-",
+  f4_5c: "-",
+  f4_6a: "+",
+  f4_6b: "+",
+  f4_6c: "+",
+  f4_6d: "+",
+  f4_6e: "+",
+  f4_7a: "-",
+  f4_7b: "+",
+  f4_7c: "-",
+  f4_7d: "+",
+  f4_7e: "+",
+  f4_7f: "-",
+  f4_8a: "-",
+  f4_8b: "+",
+  f4_8c: "+",
+  f4_8d: "-",
+  f4_9: "±",
+  f4_10: "±",
+  f4_11: "-",
+  f4_12: "+",
+  f4_14a: "-",
+  f4_14b: "+",
+  f4_14c: "+",
+  f4_15: "+",
+  f4_16: "-",
+};
 
-const INK2R_RESULT_MINUS_FIELDS = new Set([
-  "3.5",
-  "3.6",
-  "3.7",
-  "3.8",
-  "3.9",
-  "3.10",
-  "3.11",
-  "3.17",
-  "3.18",
-  "3.19",
-  "3.22",
-  "3.25",
-  "3.27",
-]);
+const PLUS_MINUS_FIELD_IDS = Object.entries(FIELD_SIGNS)
+  .filter(([, sign]) => sign === "±")
+  .map(([fieldId]) => fieldId);
 
 function fieldIdFromInk2rField(ink2rField: string): string | null {
   if (!ink2rField || ink2rField.includes("/")) return null;
   return `f${ink2rField.replace(".", "_")}`;
+}
+
+function getFieldSign(fieldId: string): FieldSign {
+  return FIELD_SIGNS[fieldId] ?? "none";
 }
 
 function getOrCreateField(
@@ -82,40 +127,76 @@ function getOrCreateField(
   note = "Summeras från exakt BAS 2026 → INK2-koppling."
 ): FieldResult {
   if (!fields[id]) {
-    fields[id] = { value: 0, breakdown: [], source: "accounts", note };
+    fields[id] = { value: 0, signedValue: 0, breakdown: [], source: "accounts", note };
   }
   return fields[id];
 }
 
-function addToField(
+function normalizeForDisplay(field: FieldResult): void {
+  field.value = Math.abs(field.signedValue ?? field.value ?? 0);
+}
+
+function signedAmountFromVisibleValue(fieldId: string, value: number): number {
+  const absValue = Math.abs(value);
+
+  switch (getFieldSign(fieldId)) {
+    case "-":
+      return -absValue;
+    case "+":
+      return absValue;
+    case "±":
+      return value;
+    case "none":
+    default:
+      return value;
+  }
+}
+
+function getSigned(fields: Record<string, FieldResult>, id: string): number {
+  const field = fields[id];
+  if (!field) return 0;
+
+  if (typeof field.signedValue === "number") {
+    return field.signedValue;
+  }
+
+  return signedAmountFromVisibleValue(id, field.value ?? 0);
+}
+
+function getVisible(fields: Record<string, FieldResult>, id: string): number {
+  return Math.abs(fields[id]?.value ?? 0);
+}
+
+function addSignedToField(
   fields: Record<string, FieldResult>,
   fieldId: string,
   label: string,
-  amount: number,
+  signedAmount: number,
   note?: string
 ): void {
-  if (Math.abs(amount) < EPSILON) return;
+  if (Math.abs(signedAmount) < 0.005) return;
 
   const field = getOrCreateField(fields, fieldId, note);
-  field.value += amount;
-  field.breakdown.push({ label, amount });
+  field.signedValue = (field.signedValue ?? signedAmountFromVisibleValue(fieldId, field.value)) + signedAmount;
+  normalizeForDisplay(field);
+  field.breakdown.push({ label, amount: signedAmount });
 }
 
-function setFormulaField(
-  value: number,
+function createFormulaField(
+  fieldId: string,
+  signedAmount: number,
   breakdown: BreakdownEntry[],
   note?: string
 ): FieldResult {
+  const signedValue = signedAmountFromVisibleValue(fieldId, signedAmount);
+
   return {
-    value: Math.abs(value) < EPSILON ? 0 : value,
+    value: Math.abs(signedValue),
+    signedValue,
     breakdown,
     source: "formula",
     note,
   };
-}
-
-function emptyFormulaField(): FieldResult {
-  return { value: 0, breakdown: [], source: "formula" };
 }
 
 function aggregateVoucherAccounts(vouchers: Voucher[], accounts: BASAccount[]): AccountAggregate[] {
@@ -124,7 +205,7 @@ function aggregateVoucherAccounts(vouchers: Voucher[], accounts: BASAccount[]): 
   vouchers.forEach((voucher) => {
     voucher.lines.forEach((line) => {
       const accountNumber = line.accountNumber?.trim();
-      if (!/^\d{4}$/.test(accountNumber)) return;
+      if (!accountNumber || !/^\d{4}$/.test(accountNumber)) return;
 
       const cur = totals.get(accountNumber) ?? { debit: 0, credit: 0 };
       cur.debit += line.debit || 0;
@@ -137,14 +218,11 @@ function aggregateVoucherAccounts(vouchers: Voucher[], accounts: BASAccount[]): 
     .map(([accountNumber, { debit, credit }]) => {
       const account = accounts.find((a) => a.number === accountNumber);
       const accClass = getAccountClass(accountNumber);
+      const mapping = INK2_ACCOUNT_MAPPING_2026[accountNumber];
 
       return {
         accountNumber,
-        accountName:
-          account?.name ??
-          INK2_ACCOUNT_MAPPING_2026[accountNumber]?.accountName ??
-          INK2_ACCOUNT_MAPPING_2026[accountNumber]?.ink2rLabel ??
-          "Okänt konto",
+        accountName: account?.name ?? mapping?.accountName ?? mapping?.ink2rLabel ?? "Okänt konto",
         totalDebit: debit,
         totalCredit: credit,
         balance: calculateBalance(accClass, debit, credit),
@@ -153,374 +231,334 @@ function aggregateVoucherAccounts(vouchers: Voucher[], accounts: BASAccount[]): 
     .sort((a, b) => a.accountNumber.localeCompare(b.accountNumber));
 }
 
-function creditMinusDebit(aggregate: AccountAggregate): number {
-  return aggregate.totalCredit - aggregate.totalDebit;
-}
+function accountNaturalAmount(aggregate: AccountAggregate, fieldId: string): number {
+  const debitMinusCredit = aggregate.totalDebit - aggregate.totalCredit;
+  const creditMinusDebit = aggregate.totalCredit - aggregate.totalDebit;
+  const sign = getFieldSign(fieldId);
 
-function debitMinusCredit(aggregate: AccountAggregate): number {
-  return aggregate.totalDebit - aggregate.totalCredit;
-}
-
-function signedAmountForMapping(aggregate: AccountAggregate, ink2rField: string, amountRule?: string): number {
-  const rule = (amountRule ?? "").toLowerCase();
-
-  if (ink2rField.startsWith("2.")) {
+  // Resultaträkningens plusfält ska bidra positivt när kontot har ett normalt intäkts-/kreditsaldo.
+  if (sign === "+") {
+    if (fieldId.startsWith("f3_") && aggregate.accountNumber.startsWith("8")) {
+      return creditMinusDebit;
+    }
     return aggregate.balance;
   }
 
-  // Former ± result fields must be netted using result logic:
-  // credit/income = plus, debit/cost/loss = minus.
-  if (INK2R_PLUS_MINUS_FIELDS.has(ink2rField) || ink2rField === "3.21/3.22") {
-    return creditMinusDebit(aggregate);
+  // Resultaträkningens minusfält ska bidra negativt när kontot har ett normalt kostnads-/debetsaldo.
+  if (sign === "-") {
+    if (fieldId.startsWith("f3_") && aggregate.accountNumber.startsWith("8")) {
+      return -debitMinusCredit;
+    }
+    return -Math.abs(aggregate.balance);
   }
 
-  if (rule.includes("kreditsaldo minus debetsaldo")) {
-    return creditMinusDebit(aggregate);
+  // ±-fält måste behålla nettots riktning. För 8-konton betyder kredit positivt resultat och debet negativt resultat.
+  if (sign === "±") {
+    if (aggregate.accountNumber.startsWith("8")) {
+      return creditMinusDebit;
+    }
+    return aggregate.balance;
   }
 
-  if (rule.includes("debetsaldo minus kreditsaldo")) {
-    return debitMinusCredit(aggregate);
-  }
-
-  if (INK2R_RESULT_PLUS_FIELDS.has(ink2rField)) {
-    return creditMinusDebit(aggregate);
-  }
-
-  if (INK2R_RESULT_MINUS_FIELDS.has(ink2rField)) {
-    return debitMinusCredit(aggregate);
-  }
-
+  // Balansräkningen använder kontoklassens naturliga saldo.
   return aggregate.balance;
 }
 
-function addToPendingSignedGroup(
-  groups: Record<string, PendingSignedGroup>,
-  groupId: string,
-  label: string,
-  amount: number,
-  note: string
-): void {
-  if (Math.abs(amount) < EPSILON) return;
-
-  if (!groups[groupId]) {
-    groups[groupId] = { value: 0, breakdown: [], note };
-  }
-
-  groups[groupId].value += amount;
-  groups[groupId].breakdown.push({ label, amount });
-}
-
-function flushPendingSignedGroups(
-  fields: Record<string, FieldResult>,
-  groups: Record<string, PendingSignedGroup>
-): void {
-  Object.entries(groups).forEach(([groupId, group]) => {
-    if (Math.abs(group.value) < EPSILON) return;
-
-    if (groupId === "3.21/3.22") {
-      const fieldId = group.value >= 0 ? "f3_21" : "f3_22";
-      fields[fieldId] = {
-        value: group.value,
-        breakdown: group.breakdown,
-        source: "accounts",
-        note: group.note,
-      };
-      return;
-    }
-
-    if (INK2R_PLUS_MINUS_FIELDS.has(groupId)) {
-      const baseFieldId = fieldIdFromInk2rField(groupId);
-      if (!baseFieldId) return;
-
-      const fieldId = group.value >= 0 ? `${baseFieldId}_plus` : `${baseFieldId}_minus`;
-      fields[fieldId] = {
-        value: group.value,
-        breakdown: group.breakdown,
-        source: "accounts",
-        note: group.note,
-      };
-    }
-  });
-}
-
-function addMappedAccount(
-  fields: Record<string, FieldResult>,
-  signedGroups: Record<string, PendingSignedGroup>,
-  aggregate: AccountAggregate
-): void {
+function addMappedAccount(fields: Record<string, FieldResult>, aggregate: AccountAggregate): void {
   const mapping = INK2_ACCOUNT_MAPPING_2026[aggregate.accountNumber];
   if (!mapping?.ink2rField) return;
 
   const baseLabel = `${aggregate.accountNumber} ${aggregate.accountName}`;
   const fullLabel = mapping.sruCodes ? `${baseLabel} · SRU ${mapping.sruCodes}` : baseLabel;
 
-  // 8990/8999 should not be booked directly into 3.26/3.27 here.
-  // Those fields are calculated from the whole income statement below to avoid double-counting.
+  // 8990/8999 ska inte summeras direkt till 3.26/3.27.
+  // 3.26/3.27 beräknas från hela resultaträkningen längre ned för att undvika dubbelräkning.
   if (mapping.ink2rField === "3.26/3.27") return;
 
-  const signedAmount = signedAmountForMapping(aggregate, mapping.ink2rField, mapping.amountRule);
-
-  // 8810 is one BAS account but two declaration fields:
-  // net credit = återföring/intäkt -> 3.21
-  // net debit   = avsättning/kostnad -> 3.22
+  // 8810 är ett specialkonto: kreditnetto är återföring (+ 3.21), debetnetto är avsättning (- 3.22).
   if (mapping.ink2rField === "3.21/3.22") {
-    addToPendingSignedGroup(
-      signedGroups,
-      "3.21/3.22",
-      fullLabel,
-      signedAmount,
-      "8810 nettas först. Kreditsaldo/återföring hamnar i 3.21, debetsaldo/avsättning hamnar i 3.22."
-    );
-    return;
-  }
+    const signedNet = aggregate.totalCredit - aggregate.totalDebit;
 
-  // Former ± fields are netted first, then placed either in _plus or _minus.
-  // This avoids showing both a plus and minus value when the field has one net result.
-  if (INK2R_PLUS_MINUS_FIELDS.has(mapping.ink2rField)) {
-    addToPendingSignedGroup(
-      signedGroups,
-      mapping.ink2rField,
-      fullLabel,
-      signedAmount,
-      `${mapping.ink2rField} nettas först. Positivt netto hamnar i plusraden, negativt netto hamnar i minusraden.`
-    );
+    if (signedNet > 0) {
+      addSignedToField(
+        fields,
+        "f3_21",
+        fullLabel,
+        signedNet,
+        "8810 teckenstyrs: kreditnetto/återföring till 3.21, debetnetto/avsättning till 3.22."
+      );
+    } else if (signedNet < 0) {
+      addSignedToField(
+        fields,
+        "f3_22",
+        fullLabel,
+        signedNet,
+        "8810 teckenstyrs: kreditnetto/återföring till 3.21, debetnetto/avsättning till 3.22."
+      );
+    }
     return;
   }
 
   const fieldId = fieldIdFromInk2rField(mapping.ink2rField);
   if (!fieldId) return;
 
-  addToField(fields, fieldId, fullLabel, signedAmount);
+  const signedAmount = accountNaturalAmount(aggregate, fieldId);
+  addSignedToField(fields, fieldId, fullLabel, signedAmount);
 }
 
-function getRaw(fields: Record<string, FieldResult>, id: string): number {
-  return fields[id]?.value ?? 0;
-}
+function buildIncomeStatementResult(fields: Record<string, FieldResult>): Record<"f3_26" | "f3_27", FieldResult> {
+  const rorelseintakter =
+    getSigned(fields, "f3_1") +
+    getSigned(fields, "f3_2") +
+    getSigned(fields, "f3_3") +
+    getSigned(fields, "f3_4");
 
-function declarationAmount(fields: Record<string, FieldResult>, id: string): number {
-  // Declaration formulas use the amount in the field independent of how the UI chooses to render signs.
-  return Math.abs(getRaw(fields, id));
-}
+  const rorelsekostnader =
+    getSigned(fields, "f3_5") +
+    getSigned(fields, "f3_6") +
+    getSigned(fields, "f3_7") +
+    getSigned(fields, "f3_8") +
+    getSigned(fields, "f3_9") +
+    getSigned(fields, "f3_10") +
+    getSigned(fields, "f3_11");
 
-function amount(fields: Record<string, FieldResult>, id: string): number {
-  return declarationAmount(fields, id);
-}
+  const finansiellaPoster =
+    getSigned(fields, "f3_12") +
+    getSigned(fields, "f3_13") +
+    getSigned(fields, "f3_14") +
+    getSigned(fields, "f3_15") +
+    getSigned(fields, "f3_16") +
+    getSigned(fields, "f3_17") +
+    getSigned(fields, "f3_18");
 
-function buildIncomeStatementResult(fields: Record<string, FieldResult>): Pick<Record<string, FieldResult>, "f3_26" | "f3_27"> {
-  const netto =
-    amount(fields, "f3_1") +
-    amount(fields, "f3_2") +
-    amount(fields, "f3_3") +
-    amount(fields, "f3_4") -
-    amount(fields, "f3_5") -
-    amount(fields, "f3_6") -
-    amount(fields, "f3_7") -
-    amount(fields, "f3_8") -
-    amount(fields, "f3_9") -
-    amount(fields, "f3_10") -
-    amount(fields, "f3_11") +
-    amount(fields, "f3_12_plus") -
-    amount(fields, "f3_12_minus") +
-    amount(fields, "f3_13_plus") -
-    amount(fields, "f3_13_minus") +
-    amount(fields, "f3_14_plus") -
-    amount(fields, "f3_14_minus") +
-    amount(fields, "f3_15_plus") -
-    amount(fields, "f3_15_minus") +
-    amount(fields, "f3_16") -
-    amount(fields, "f3_17") -
-    amount(fields, "f3_18") -
-    amount(fields, "f3_19") +
-    amount(fields, "f3_20") +
-    amount(fields, "f3_21") -
-    amount(fields, "f3_22") +
-    amount(fields, "f3_23_plus") -
-    amount(fields, "f3_23_minus") +
-    amount(fields, "f3_24_plus") -
-    amount(fields, "f3_24_minus") -
-    amount(fields, "f3_25");
+  const koncernbidrag = getSigned(fields, "f3_19") + getSigned(fields, "f3_20");
+
+  const bokslutsdispositioner =
+    getSigned(fields, "f3_21") +
+    getSigned(fields, "f3_22") +
+    getSigned(fields, "f3_23") +
+    getSigned(fields, "f3_24");
+
+  const skatt = getSigned(fields, "f3_25");
+  const netto = rorelseintakter + rorelsekostnader + finansiellaPoster + koncernbidrag + bokslutsdispositioner + skatt;
 
   const breakdown: BreakdownEntry[] = [
-    { label: "+ 3.1 Nettoomsättning", amount: amount(fields, "f3_1") },
-    { label: "+ 3.2 Lagerförändring", amount: amount(fields, "f3_2") },
-    { label: "+ 3.3 Aktiverat arbete", amount: amount(fields, "f3_3") },
-    { label: "+ 3.4 Övriga rörelseintäkter", amount: amount(fields, "f3_4") },
-    { label: "− 3.5 Råvaror och förnödenheter", amount: -amount(fields, "f3_5") },
-    { label: "− 3.6 Handelsvaror", amount: -amount(fields, "f3_6") },
-    { label: "− 3.7 Övriga externa kostnader", amount: -amount(fields, "f3_7") },
-    { label: "− 3.8 Personalkostnader", amount: -amount(fields, "f3_8") },
-    { label: "− 3.9 Av- och nedskrivningar", amount: -amount(fields, "f3_9") },
-    { label: "− 3.10 Nedskrivningar av omsättningstillgångar", amount: -amount(fields, "f3_10") },
-    { label: "− 3.11 Övriga rörelsekostnader", amount: -amount(fields, "f3_11") },
-    { label: "+ 3.12 plusrad", amount: amount(fields, "f3_12_plus") },
-    { label: "− 3.12 minusrad", amount: -amount(fields, "f3_12_minus") },
-    { label: "+ 3.13 plusrad", amount: amount(fields, "f3_13_plus") },
-    { label: "− 3.13 minusrad", amount: -amount(fields, "f3_13_minus") },
-    { label: "+ 3.14 plusrad", amount: amount(fields, "f3_14_plus") },
-    { label: "− 3.14 minusrad", amount: -amount(fields, "f3_14_minus") },
-    { label: "+ 3.15 plusrad", amount: amount(fields, "f3_15_plus") },
-    { label: "− 3.15 minusrad", amount: -amount(fields, "f3_15_minus") },
-    { label: "+ 3.16 Ränteintäkter", amount: amount(fields, "f3_16") },
-    { label: "− 3.17 Finansiella nedskrivningar", amount: -amount(fields, "f3_17") },
-    { label: "− 3.18 Räntekostnader", amount: -amount(fields, "f3_18") },
-    { label: "− 3.19 Lämnade koncernbidrag", amount: -amount(fields, "f3_19") },
-    { label: "+ 3.20 Mottagna koncernbidrag", amount: amount(fields, "f3_20") },
-    { label: "+ 3.21 Återföring periodiseringsfond", amount: amount(fields, "f3_21") },
-    { label: "− 3.22 Avsättning periodiseringsfond", amount: -amount(fields, "f3_22") },
-    { label: "+ 3.23 plusrad", amount: amount(fields, "f3_23_plus") },
-    { label: "− 3.23 minusrad", amount: -amount(fields, "f3_23_minus") },
-    { label: "+ 3.24 plusrad", amount: amount(fields, "f3_24_plus") },
-    { label: "− 3.24 minusrad", amount: -amount(fields, "f3_24_minus") },
-    { label: "− 3.25 Skatt", amount: -amount(fields, "f3_25") },
-  ].filter((entry) => Math.abs(entry.amount) >= EPSILON);
+    { label: "Rörelseintäkter (3.1–3.4)", amount: rorelseintakter },
+    { label: "Rörelsekostnader (3.5–3.11)", amount: rorelsekostnader },
+    { label: "Finansiella poster (3.12–3.18)", amount: finansiellaPoster },
+    { label: "Koncernbidrag (3.19/3.20)", amount: koncernbidrag },
+    { label: "Bokslutsdispositioner (3.21–3.24)", amount: bokslutsdispositioner },
+    { label: "Skatt (3.25)", amount: skatt },
+  ];
 
   return {
-    f3_26:
-      netto >= 0
-        ? setFormulaField(netto, breakdown, "Beräknas med deklarationens teckenlogik från INK2R.")
-        : emptyFormulaField(),
-    f3_27:
-      netto < 0
-        ? setFormulaField(netto, breakdown, "Beräknas med deklarationens teckenlogik från INK2R.")
-        : emptyFormulaField(),
+    f3_26: netto >= 0
+      ? createFormulaField("f3_26", netto, breakdown, "Beräknas från INK2R med deklarationens teckenlogik.")
+      : createFormulaField("f3_26", 0, [], "Beräknas från INK2R med deklarationens teckenlogik."),
+    f3_27: netto < 0
+      ? createFormulaField("f3_27", netto, breakdown, "Beräknas från INK2R med deklarationens teckenlogik.")
+      : createFormulaField("f3_27", 0, [], "Beräknas från INK2R med deklarationens teckenlogik."),
   };
 }
 
 function buildTaxAdjustments(fields: Record<string, FieldResult>): Record<string, FieldResult> {
-  const aretsResultat = amount(fields, "f3_26") - amount(fields, "f3_27");
+  const aretsResultat = getSigned(fields, "f3_26") + getSigned(fields, "f3_27");
 
-  const f4_1: FieldResult =
-    aretsResultat >= 0
-      ? setFormulaField(
-          aretsResultat,
-          [
-            { label: "+ 3.26 Årets resultat, vinst", amount: amount(fields, "f3_26") },
-            { label: "− 3.27 Årets resultat, förlust", amount: -amount(fields, "f3_27") },
-          ].filter((entry) => Math.abs(entry.amount) >= EPSILON),
-          "Hämtas från 3.26 om årets resultat är vinst."
-        )
-      : emptyFormulaField();
+  const f4_1: FieldResult = aretsResultat >= 0
+    ? createFormulaField(
+        "f4_1",
+        aretsResultat,
+        [
+          { label: "3.26 Årets resultat, vinst", amount: getSigned(fields, "f3_26") },
+          { label: "3.27 Årets resultat, förlust", amount: getSigned(fields, "f3_27") },
+        ],
+        "Hämtas från resultaträkningen (3.26/3.27)."
+      )
+    : createFormulaField("f4_1", 0, [], "Hämtas från resultaträkningen (3.26/3.27).");
 
-  const f4_2: FieldResult =
-    aretsResultat < 0
-      ? setFormulaField(
-          aretsResultat,
-          [
-            { label: "− 3.27 Årets resultat, förlust", amount: -amount(fields, "f3_27") },
-            { label: "+ 3.26 Årets resultat, vinst", amount: amount(fields, "f3_26") },
-          ].filter((entry) => Math.abs(entry.amount) >= EPSILON),
-          "Hämtas från 3.27 om årets resultat är förlust."
-        )
-      : emptyFormulaField();
+  const f4_2: FieldResult = aretsResultat < 0
+    ? createFormulaField(
+        "f4_2",
+        aretsResultat,
+        [
+          { label: "3.26 Årets resultat, vinst", amount: getSigned(fields, "f3_26") },
+          { label: "3.27 Årets resultat, förlust", amount: getSigned(fields, "f3_27") },
+        ],
+        "Hämtas från resultaträkningen (3.26/3.27)."
+      )
+    : createFormulaField("f4_2", 0, [], "Hämtas från resultaträkningen (3.26/3.27).");
 
-  const f4_3a: FieldResult = setFormulaField(
-    amount(fields, "f3_25"),
-    [{ label: "+ 3.25 Skatt på årets resultat", amount: amount(fields, "f3_25") }].filter((entry) => Math.abs(entry.amount) >= EPSILON),
+  // 4.3a lägger tillbaka bokförd skatt. Den ska därför vara plus i INK2S även om 3.25 var ett minusfält i INK2R.
+  const f4_3a: FieldResult = createFormulaField(
+    "f4_3a",
+    getVisible(fields, "f3_25"),
+    [{ label: "3.25 Skatt på årets resultat", amount: getVisible(fields, "f3_25") }],
     "Återlagd skatt – ej avdragsgill kostnad."
   );
 
+  const temporaryFields: Record<string, FieldResult> = {
+    ...fields,
+    f4_1,
+    f4_2,
+    f4_3a,
+  };
+
+  const delagarratter =
+    getSigned(temporaryFields, "f4_7a") +
+    getSigned(temporaryFields, "f4_7b") +
+    getSigned(temporaryFields, "f4_7c") +
+    getSigned(temporaryFields, "f4_7d") +
+    getSigned(temporaryFields, "f4_7e") +
+    getSigned(temporaryFields, "f4_7f");
+
+  const handelsbolag =
+    getSigned(temporaryFields, "f4_8a") +
+    getSigned(temporaryFields, "f4_8b") +
+    getSigned(temporaryFields, "f4_8c") +
+    getSigned(temporaryFields, "f4_8d");
+
+  const ovrigaJusteringar =
+    getSigned(temporaryFields, "f4_9") +
+    getSigned(temporaryFields, "f4_10") +
+    getSigned(temporaryFields, "f4_11") +
+    getSigned(temporaryFields, "f4_12");
+
+  const underskott =
+    getSigned(temporaryFields, "f4_14a") +
+    getSigned(temporaryFields, "f4_14b") +
+    getSigned(temporaryFields, "f4_14c");
+
   const skattemassigtResultat =
-    amount({ f4_1 }, "f4_1") -
-    amount({ f4_2 }, "f4_2") +
-    amount({ f4_3a }, "f4_3a") +
-    amount(fields, "f4_3b") +
-    amount(fields, "f4_3c") -
-    amount(fields, "f4_4a") -
-    amount(fields, "f4_4b") -
-    amount(fields, "f4_5a") -
-    amount(fields, "f4_5b") -
-    amount(fields, "f4_5c") +
-    amount(fields, "f4_6a") +
-    amount(fields, "f4_6b") +
-    amount(fields, "f4_6c") +
-    amount(fields, "f4_6d") +
-    amount(fields, "f4_6e") -
-    amount(fields, "f4_7a") +
-    amount(fields, "f4_7b") -
-    amount(fields, "f4_7c") +
-    amount(fields, "f4_7d") +
-    amount(fields, "f4_7e") -
-    amount(fields, "f4_7f") -
-    amount(fields, "f4_8a") +
-    amount(fields, "f4_8b") +
-    amount(fields, "f4_8c") -
-    amount(fields, "f4_8d") +
-    amount(fields, "f4_9_plus") -
-    amount(fields, "f4_9_minus") +
-    amount(fields, "f4_10_plus") -
-    amount(fields, "f4_10_minus") -
-    amount(fields, "f4_11") +
-    amount(fields, "f4_12") -
-    amount(fields, "f4_14a") +
-    amount(fields, "f4_14b") +
-    amount(fields, "f4_14c");
+    getSigned(temporaryFields, "f4_1") +
+    getSigned(temporaryFields, "f4_2") +
+    getSigned(temporaryFields, "f4_3a") +
+    getSigned(temporaryFields, "f4_3b") +
+    getSigned(temporaryFields, "f4_3c") +
+    getSigned(temporaryFields, "f4_4a") +
+    getSigned(temporaryFields, "f4_4b") +
+    getSigned(temporaryFields, "f4_5a") +
+    getSigned(temporaryFields, "f4_5b") +
+    getSigned(temporaryFields, "f4_5c") +
+    getSigned(temporaryFields, "f4_6a") +
+    getSigned(temporaryFields, "f4_6b") +
+    getSigned(temporaryFields, "f4_6c") +
+    getSigned(temporaryFields, "f4_6d") +
+    getSigned(temporaryFields, "f4_6e") +
+    delagarratter +
+    handelsbolag +
+    ovrigaJusteringar +
+    underskott;
 
   const breakdown415: BreakdownEntry[] = [
-    { label: "+ 4.1 Årets resultat, vinst", amount: amount({ f4_1 }, "f4_1") },
-    { label: "− 4.2 Årets resultat, förlust", amount: -amount({ f4_2 }, "f4_2") },
-    { label: "+ 4.3a Skatt på årets resultat", amount: amount({ f4_3a }, "f4_3a") },
-    { label: "+ 4.3b Nedskrivning av finansiella tillgångar", amount: amount(fields, "f4_3b") },
-    { label: "+ 4.3c Andra bokförda kostnader", amount: amount(fields, "f4_3c") },
-    { label: "− 4.4a Lämnade koncernbidrag", amount: -amount(fields, "f4_4a") },
-    { label: "− 4.4b Andra ej bokförda kostnader", amount: -amount(fields, "f4_4b") },
-    { label: "− 4.5a Ackordsvinster", amount: -amount(fields, "f4_5a") },
-    { label: "− 4.5b Utdelning", amount: -amount(fields, "f4_5b") },
-    { label: "− 4.5c Andra bokförda intäkter", amount: -amount(fields, "f4_5c") },
-    { label: "+ 4.6a Schablonintäkt periodiseringsfonder", amount: amount(fields, "f4_6a") },
-    { label: "+ 4.6b Schablonintäkt fondandelar", amount: amount(fields, "f4_6b") },
-    { label: "+ 4.6c Mottagna koncernbidrag", amount: amount(fields, "f4_6c") },
-    { label: "+ 4.6d Uppräknat belopp vid återföring", amount: amount(fields, "f4_6d") },
-    { label: "+ 4.6e Andra ej bokförda intäkter", amount: amount(fields, "f4_6e") },
-    { label: "− 4.7a Bokförd vinst", amount: -amount(fields, "f4_7a") },
-    { label: "+ 4.7b Bokförd förlust", amount: amount(fields, "f4_7b") },
-    { label: "− 4.7c Uppskov kapitalvinst", amount: -amount(fields, "f4_7c") },
-    { label: "+ 4.7d Återfört uppskov", amount: amount(fields, "f4_7d") },
-    { label: "+ 4.7e Kapitalvinst", amount: amount(fields, "f4_7e") },
-    { label: "− 4.7f Kapitalförlust som ska dras av", amount: -amount(fields, "f4_7f") },
-    { label: "− 4.8a Bokförd intäkt/vinst", amount: -amount(fields, "f4_8a") },
-    { label: "+ 4.8b Skattemässigt överskott", amount: amount(fields, "f4_8b") },
-    { label: "+ 4.8c Bokförd kostnad/förlust", amount: amount(fields, "f4_8c") },
-    { label: "− 4.8d Skattemässigt underskott", amount: -amount(fields, "f4_8d") },
-    { label: "+ 4.9 plusrad", amount: amount(fields, "f4_9_plus") },
-    { label: "− 4.9 minusrad", amount: -amount(fields, "f4_9_minus") },
-    { label: "+ 4.10 plusrad", amount: amount(fields, "f4_10_plus") },
-    { label: "− 4.10 minusrad", amount: -amount(fields, "f4_10_minus") },
-    { label: "− 4.11 Skogs-/substansminskningsavdrag", amount: -amount(fields, "f4_11") },
-    { label: "+ 4.12 Återföringar vid avyttring av fastighet", amount: amount(fields, "f4_12") },
-    { label: "− 4.14a Outnyttjat underskott", amount: -amount(fields, "f4_14a") },
-    { label: "+ 4.14b Reduktion av underskott", amount: amount(fields, "f4_14b") },
-    { label: "+ 4.14c Reduktion av spärrat underskott", amount: amount(fields, "f4_14c") },
-  ].filter((entry) => Math.abs(entry.amount) >= EPSILON);
+    { label: "4.1 Årets resultat, vinst", amount: getSigned(temporaryFields, "f4_1") },
+    { label: "4.2 Årets resultat, förlust", amount: getSigned(temporaryFields, "f4_2") },
+    {
+      label: "4.3 Bokförda kostnader som inte ska dras av",
+      amount: getSigned(temporaryFields, "f4_3a") + getSigned(temporaryFields, "f4_3b") + getSigned(temporaryFields, "f4_3c"),
+    },
+    {
+      label: "4.4 Kostnader som ska dras av men som inte ingår i resultatet",
+      amount: getSigned(temporaryFields, "f4_4a") + getSigned(temporaryFields, "f4_4b"),
+    },
+    {
+      label: "4.5 Bokförda intäkter som inte ska tas upp",
+      amount: getSigned(temporaryFields, "f4_5a") + getSigned(temporaryFields, "f4_5b") + getSigned(temporaryFields, "f4_5c"),
+    },
+    {
+      label: "4.6 Intäkter som ska tas upp men inte ingår i resultatet",
+      amount:
+        getSigned(temporaryFields, "f4_6a") +
+        getSigned(temporaryFields, "f4_6b") +
+        getSigned(temporaryFields, "f4_6c") +
+        getSigned(temporaryFields, "f4_6d") +
+        getSigned(temporaryFields, "f4_6e"),
+    },
+    { label: "4.7 Avyttring av delägarrätter", amount: delagarratter },
+    { label: "4.8 Andel i handelsbolag", amount: handelsbolag },
+    { label: "4.9–4.12 Övriga skattemässiga justeringar", amount: ovrigaJusteringar },
+    { label: "4.14 Underskott", amount: underskott },
+  ];
 
-  const f4_15: FieldResult =
-    skattemassigtResultat >= 0
-      ? setFormulaField(skattemassigtResultat, breakdown415, "Beräknas med deklarationens teckenlogik från INK2S.")
-      : emptyFormulaField();
+  const f4_15: FieldResult = skattemassigtResultat >= 0
+    ? createFormulaField("f4_15", skattemassigtResultat, breakdown415, "Bokfört resultat summerat med INK2S-fältens teckenlogik.")
+    : createFormulaField("f4_15", 0, [], "Bokfört resultat summerat med INK2S-fältens teckenlogik.");
 
-  const f4_16: FieldResult =
-    skattemassigtResultat < 0
-      ? setFormulaField(skattemassigtResultat, breakdown415, "Beräknas med deklarationens teckenlogik från INK2S.")
-      : emptyFormulaField();
+  const f4_16: FieldResult = skattemassigtResultat < 0
+    ? createFormulaField("f4_16", skattemassigtResultat, breakdown415, "Bokfört resultat summerat med INK2S-fältens teckenlogik.")
+    : createFormulaField("f4_16", 0, [], "Bokfört resultat summerat med INK2S-fältens teckenlogik.");
 
-  const f1_1: FieldResult = setFormulaField(f4_15.value, [{ label: "+ 4.15 Överskott", amount: f4_15.value }], "Hämtas från 4.15.");
-  const f1_2: FieldResult = setFormulaField(f4_16.value, [{ label: "4.16 Underskott", amount: f4_16.value }], "Hämtas från 4.16.");
+  const f1_1: FieldResult = createFormulaField(
+    "f1_1",
+    getSigned({ f4_15 }, "f4_15"),
+    [{ label: "4.15 Överskott", amount: getSigned({ f4_15 }, "f4_15") }],
+    "Hämtas från 4.15."
+  );
+
+  const f1_2: FieldResult = createFormulaField(
+    "f1_2",
+    getSigned({ f4_16 }, "f4_16"),
+    [{ label: "4.16 Underskott", amount: getSigned({ f4_16 }, "f4_16") }],
+    "Hämtas från 4.16."
+  );
 
   return { f1_1, f1_2, f4_1, f4_2, f4_3a, f4_15, f4_16 };
 }
 
+function addPlusMinusAliases(fields: Record<string, FieldResult>): void {
+  PLUS_MINUS_FIELD_IDS.forEach((fieldId) => {
+    const field = fields[fieldId];
+    if (!field) return;
+
+    const signedValue = getSigned(fields, fieldId);
+    const plusId = `${fieldId}_plus`;
+    const minusId = `${fieldId}_minus`;
+
+    fields[plusId] = signedValue > 0
+      ? {
+          ...field,
+          value: Math.abs(signedValue),
+          signedValue,
+          note: `${field.note ?? ""} Visas i plusfältet.`.trim(),
+        }
+      : {
+          value: 0,
+          signedValue: 0,
+          breakdown: [],
+          source: field.source,
+          note: `${field.note ?? ""} Plusfält för ${fieldId}.`.trim(),
+        };
+
+    fields[minusId] = signedValue < 0
+      ? {
+          ...field,
+          value: Math.abs(signedValue),
+          signedValue,
+          note: `${field.note ?? ""} Visas i minusfältet.`.trim(),
+        }
+      : {
+          value: 0,
+          signedValue: 0,
+          breakdown: [],
+          source: field.source,
+          note: `${field.note ?? ""} Minusfält för ${fieldId}.`.trim(),
+        };
+  });
+}
+
 export function calculateDeclarationFields(vouchers: Voucher[], accounts: BASAccount[]): Record<string, FieldResult> {
   const fields: Record<string, FieldResult> = {};
-  const signedGroups: Record<string, PendingSignedGroup> = {};
 
   aggregateVoucherAccounts(vouchers, accounts).forEach((aggregate) => {
-    addMappedAccount(fields, signedGroups, aggregate);
+    addMappedAccount(fields, aggregate);
   });
 
-  flushPendingSignedGroups(fields, signedGroups);
-
-  // 3.26/3.27 must exist before 4.1/4.2/4.15/4.16 are calculated.
+  // 3.26/3.27 måste skapas innan 4.1/4.2/4.15/4.16 räknas fram.
   Object.assign(fields, buildIncomeStatementResult(fields));
   Object.assign(fields, buildTaxAdjustments(fields));
+
+  // Bakåtkompatibelt stöd för UI som delar ±-fält i separata plus/minus-fält.
+  // Parentfältet finns fortfarande kvar, men plus/minus-alias finns också: t.ex. f3_12_plus och f3_12_minus.
+  addPlusMinusAliases(fields);
 
   return fields;
 }
