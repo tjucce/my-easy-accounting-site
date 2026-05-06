@@ -532,8 +532,8 @@ export default function DeclarationPage() {
             <DeclarationField label="d. Skattemässigt underskott enl. N3B" id="f4_8d" sign="−" />
           </SectionCard>
           <SectionCard title="Övriga justeringar">
-            <DeclarationField label="4.9 Skattemässig justering av bokfört resultat för avskrivning på byggnader m.m." id="f4_9" sign="±" />
-            <DeclarationField label="4.10 Skattemässig justering vid avyttring av näringsfastighet/näringsbostadsrätt" id="f4_10" sign="±" />
+            <PlusMinusDeclarationField label="4.9 Skattemässig justering av bokfört resultat för avskrivning på byggnader m.m." id="f4_9" result={F("f4_9")} />
+            <PlusMinusDeclarationField label="4.10 Skattemässig justering vid avyttring av näringsfastighet/näringsbostadsrätt" id="f4_10" result={F("f4_10")} />
             <DeclarationField label="4.11 Skogs-/substansminskningsavdrag (blankett N8)" id="f4_11" sign="−" />
             <DeclarationField label="4.12 Återföringar vid avyttring av fastighet" id="f4_12" sign="+" />
           </SectionCard>
