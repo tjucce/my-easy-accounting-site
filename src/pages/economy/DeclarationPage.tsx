@@ -474,8 +474,8 @@ export default function DeclarationPage() {
           <SectionCard title="Bokslutsdispositioner">
             <DeclarationField label="3.21 Återföring av periodiseringsfond" id="f3_21" sign="+" result={F("f3_21")} />
             <DeclarationField label="3.22 Avsättning till periodiseringsfond" id="f3_22" sign="−" result={F("f3_22")} />
-            <DeclarationField label="3.23 Förändring av överavskrivningar" id="f3_23" sign="±" result={F("f3_23")} />
-            <DeclarationField label="3.24 Övriga bokslutsdispositioner" id="f3_24" sign="±" result={F("f3_24")} />
+            <PlusMinusDeclarationField label="3.23 Förändring av överavskrivningar" id="f3_23" result={F("f3_23")} />
+            <PlusMinusDeclarationField label="3.24 Övriga bokslutsdispositioner" id="f3_24" result={F("f3_24")} />
           </SectionCard>
           <SectionCard title="Årets resultat">
             <DeclarationField label="3.25 Skatt på årets resultat" id="f3_25" sign="−" result={F("f3_25")} />
