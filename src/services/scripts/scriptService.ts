@@ -4,6 +4,47 @@ export interface ScriptResult {
   data?: unknown;
 }
 
+export type AnnualReportQuestionKind = "text" | "textarea" | "int" | "number" | "bool" | "select";
+
+export interface AnnualReportQuestionOption {
+  value: string;
+  label: string;
+}
+
+export interface AnnualReportQuestionDependency {
+  field: string;
+  value: unknown;
+}
+
+export interface AnnualReportQuestionField {
+  id: string;
+  label: string;
+  kind: AnnualReportQuestionKind;
+  section: string;
+  widget?: "input" | "textarea" | "switch" | "select" | "date";
+  options?: AnnualReportQuestionOption[];
+  dependsOn?: AnnualReportQuestionDependency;
+}
+
+export interface AnnualReportQuestionRepeater {
+  id: string;
+  label: string;
+  kind: "year_history" | "signatories";
+  section: string;
+  yearsBack?: number[];
+  countField?: AnnualReportQuestionField;
+  fields: AnnualReportQuestionField[];
+}
+
+export interface AnnualReportQuestionSchema {
+  title: string;
+  source: string;
+  fields: AnnualReportQuestionField[];
+  repeaters: AnnualReportQuestionRepeater[];
+  sectionOrder: string[];
+  sectionLabels: Record<string, string>;
+}
+
 type ScriptAction = "annual-report" | "declaration";
 
 const apiBaseUrl = import.meta.env.VITE_SCRIPT_API_BASE_URL ?? "";
@@ -95,6 +136,17 @@ class ScriptService {
 
   runDeclarationScript(): Promise<ScriptResult> {
     return this.runScript("declaration");
+  }
+
+  async fetchAnnualReportQuestionSchema(): Promise<AnnualReportQuestionSchema> {
+    const response = await fetch(buildEndpoint("/api/annual-report/questions"));
+    const payload = await response.json().catch(() => ({}));
+
+    if (!response.ok || !payload?.success || !payload?.data) {
+      throw new Error(payload?.message ?? "Could not load annual report question schema.");
+    }
+
+    return payload.data as AnnualReportQuestionSchema;
   }
 }
 
