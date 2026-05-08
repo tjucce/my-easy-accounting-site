@@ -139,7 +139,28 @@ class ScriptService {
   }
 
   async fetchAnnualReportQuestionSchema(): Promise<AnnualReportQuestionSchema> {
-    const response = await fetch(buildEndpoint("/api/annual-report/questions"));
+    const staticResponse = await fetch("/annual-report-question-schema.json", {
+      headers: {
+        Accept: "application/json",
+      },
+    });
+
+    const contentType = staticResponse.headers.get("content-type") ?? "";
+    if (staticResponse.ok && contentType.includes("application/json")) {
+      return (await staticResponse.json()) as AnnualReportQuestionSchema;
+    }
+
+    const response = await fetch(buildEndpoint("/api/annual-report/questions"), {
+      headers: {
+        Accept: "application/json",
+      },
+    });
+    const apiContentType = response.headers.get("content-type") ?? "";
+
+    if (!apiContentType.includes("application/json")) {
+      throw new Error("Question schema endpoint returned HTML instead of JSON.");
+    }
+
     const payload = await response.json().catch(() => ({}));
 
     if (!response.ok || !payload?.success || !payload?.data) {
